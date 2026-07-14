@@ -1,0 +1,41 @@
+{
+    "title": "NFC Tasgs",
+    "config": {
+        "step": {
+            "user": {
+                "title": "Add NFC Tasg Device",
+                "description": "Set up a new device to track via NFC tag scans.\n\nActions JSON format (optional):\n[{\"key\":\"cleaned\",\"label\":\"Cleaned\",\"expected_interval_hours\":168,\"triggers_purchase\":false,\"triggers_task\":false}]",
+                "data": {
+                    "name": "Device name",
+                    "tag_id": "Tag ID (UUID)",
+                    "default_action_key": "Default action key",
+                    "actions_json": "Actions (JSON)",
+                    "icon": "Icon",
+                    "owners": "Owners (comma-separated person IDs)",
+                    "area_id": "Area ID",
+                    "assignee": "Assignee (person ID)",
+                    "double_scan_window_seconds": "Double scan window (seconds)"
+                }
+            }
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Configure NFC Tasg Device",
+                "description": "Update device settings and actions.",
+                "data": {
+                    "default_action_key": "Default action key",
+                    "actions_json": "Actions (JSON)",
+                    "icon": "Icon",
+                    "owners": "Owners (comma-separated)",
+                    "assignee": "Assignee",
+                    "double_scan_window_seconds": "Double scan window (seconds)",
+                    "task_list": "Task list entity",
+                    "shopping_list": "Shopping list entity",
+                    "area_id": "Area ID"
+                }
+            }
+        }
+    }
+}

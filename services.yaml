@@ -1,0 +1,77 @@
+scan:
+  name: "Scan NFC Tasg"
+  description: "Process a tag scan for a tracked device."
+  fields:
+    tag_id:
+      name: "Tag ID"
+      description: "UUID of the scanned NFC tag."
+      required: true
+      example: "a0c60634-0a93-4bfb-bab2-a803e83444da"
+      selector:
+        text: {}
+    scanner_device_id:
+      name: "Scanner Device ID"
+      description: "HA device ID of the phone that scanned the tag."
+      required: true
+      example: "eaa1ef3fdbfea647642d5eb5b76b3abe"
+      selector:
+        text: {}
+    action:
+      name: "Action"
+      description: "Action key. If omitted, uses the device default action."
+      required: false
+      example: "beans_refilled"
+      selector:
+        text: {}
+
+log:
+  name: "Log action manually"
+  description: "Log an action without a tag scan."
+  target:
+    device:
+      integration: nfc_tasgs
+  fields:
+    action_key:
+      name: "Action Key"
+      description: "Action key to log."
+      required: true
+      example: "cleaned"
+      selector:
+        text: {}
+    scanner:
+      name: "Scanner"
+      description: "Name of the person who performed the action."
+      required: true
+      example: "Renan"
+      selector:
+        text: {}
+
+reset_action:
+  name: "Reset action counters"
+  description: "Reset a specific action's counters and history."
+  target:
+    device:
+      integration: nfc_tasgs
+  fields:
+    action_key:
+      name: "Action Key"
+      description: "Action key to reset."
+      required: true
+      example: "cleaned"
+      selector:
+        text: {}
+
+set_assignee:
+  name: "Set assignee"
+  description: "Change the assigned person for a device."
+  target:
+    device:
+      integration: nfc_tasgs
+  fields:
+    person:
+      name: "Person"
+      description: "Person entity ID, or empty string to clear."
+      required: true
+      example: "person.renan"
+      selector:
+        text: {}

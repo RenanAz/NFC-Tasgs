@@ -1,0 +1,125 @@
+blueprint:
+  name: NFC Tasgs Tag Scan
+  description: |
+    Handles NFC tag scans for NFC Tasgs devices.
+    Single scan: logs the default action after a brief window.
+    Double scan (same tag within window): sends a notification with action choices.
+  domain: automation
+  input:
+    double_scan_window:
+      name: Double Scan Window (seconds)
+      description: Time window to detect a double scan.
+      default: 3
+      selector:
+        number:
+          min: 1
+          max: 10
+          step: 1
+
+triggers:
+  - trigger: event
+    event_type: tag_scanned
+    id: tag_scan
+  - trigger: event
+    event_type: timer.finished
+    event_data:
+      entity_id: timer.nfc_tasgs_scan_window
+    id: timer_done
+  - trigger: event
+    event_type: mobile_app_notification_action
+    id: notif_action
+
+variables:
+  double_scan_window: !input double_scan_window
+
+actions:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: tag_scan
+        sequence:
+          - variables:
+              tag_id: "{{ trigger.event.data.tag_id }}"
+              scanner_device_id: "{{ trigger.event.data.device_id }}"
+          - variables:
+              pending_str: "{{ states('input_text.nfc_tasgs_pending') }}"
+              pending: "{{ pending_str | from_json if pending_str not in ['unknown','unavailable',''] and pending_str else {} }}"
+          - choose:
+              - conditions:
+                  - "{{ pending.get('tag_id') == tag_id }}"
+                  - condition: state
+                    entity_id: timer.nfc_tasgs_scan_window
+                    state: active
+                sequence:
+                  - alias: Double scan - send action menu
+                  - action: timer.cancel
+                    target:
+                      entity_id: timer.nfc_tasgs_scan_window
+                  - action: input_text.set_value
+                    target:
+                      entity_id: input_text.nfc_tasgs_pending
+                    data:
+                      value: "{{ {'tag_id':tag_id,'scanner_device_id':scanner_device_id,'mode':'menu'} | tojson }}"
+                  - action: notify.persistent_notification
+                    data:
+                      title: NFC Tasgs
+                      message: "Double scan detected for tag {{ tag_id }}. Action menu would appear here on the scanning phone."
+            default:
+              - alias: First scan - start double-scan window
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.nfc_tasgs_pending
+                data:
+                  value: "{{ {'tag_id':tag_id,'scanner_device_id':scanner_device_id,'mode':'single'} | tojson }}"
+              - action: timer.start
+                target:
+                  entity_id: timer.nfc_tasgs_scan_window
+                data:
+                  duration: "{{ double_scan_window }}"
+
+      - conditions:
+          - condition: trigger
+            id: timer_done
+        sequence:
+          - variables:
+              pending_str: "{{ states('input_text.nfc_tasgs_pending') }}"
+              pending: "{{ pending_str | from_json if pending_str not in ['unknown','unavailable',''] and pending_str else {} }}"
+          - if:
+              - "{{ pending.get('mode','') == 'single' }}"
+            then:
+              - alias: Process single scan
+              - action: nfc_tasgs.scan
+                data:
+                  tag_id: "{{ pending.tag_id }}"
+                  scanner_device_id: "{{ pending.scanner_device_id }}"
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.nfc_tasgs_pending
+                data:
+                  value: ""
+
+      - conditions:
+          - condition: trigger
+            id: notif_action
+        sequence:
+          - variables:
+              pending_str: "{{ states('input_text.nfc_tasgs_pending') }}"
+              pending: "{{ pending_str | from_json if pending_str not in ['unknown','unavailable',''] and pending_str else {} }}"
+              chosen_action: "{{ trigger.event.data.actionKey }}"
+          - if:
+              - "{{ pending.get('mode','') == 'menu' }}"
+            then:
+              - alias: Process action from notification
+              - action: nfc_tasgs.scan
+                data:
+                  tag_id: "{{ pending.tag_id }}"
+                  scanner_device_id: "{{ pending.scanner_device_id }}"
+                  action: "{{ chosen_action }}"
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.nfc_tasgs_pending
+                data:
+                  value: ""
+
+mode: queued
+max: 5
