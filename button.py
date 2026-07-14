@@ -8,10 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
-    CONF_ACTIONS,
-    CONF_ACTION_KEY,
     CONF_DEFAULT_ACTION,
-    CONF_NAME,
     DOMAIN,
     SERVICE_LOG,
 )

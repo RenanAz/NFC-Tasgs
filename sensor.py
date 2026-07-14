@@ -11,7 +11,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfTime
+from homeassistant.const import CONF_NAME, UnitOfTime
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -24,9 +24,6 @@ from .const import (
     CONF_ACTION_KEY,
     CONF_ACTION_LABEL,
     CONF_ACTIONS,
-    CONF_DEFAULT_ACTION,
-    CONF_NAME,
-    DEVICE_SENSORS,
     DOMAIN,
 )
 from . import _compute_interval, _compute_next_due, _slugify
