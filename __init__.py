@@ -132,6 +132,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "device_id": device_entry.id,
     }
 
+    from . import binary_sensor as _binary_sensor  # noqa: F811
+    from . import button as _button  # noqa: F811
+    from . import sensor as _sensor  # noqa: F811
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     if not hass.data[DOMAIN].get("services_registered"):
