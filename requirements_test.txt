@@ -1,0 +1,4 @@
+# Development requirements for tests.
+# Pins the Home Assistant core version used by the test suite.
+# Keep this in sync with your live Home Assistant version.
+pytest-homeassistant-custom-component==0.13.366

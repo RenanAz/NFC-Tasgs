@@ -27,10 +27,14 @@ scan:
 log:
   name: "Log action manually"
   description: "Log an action without a tag scan."
-  target:
-    device:
-      integration: nfc_tasgs
   fields:
+    device_id:
+      name: "Device"
+      description: "NFC Tasgs device to log the action against."
+      required: true
+      selector:
+        device:
+          integration: nfc_tasgs
     action_key:
       name: "Action Key"
       description: "Action key to log."
@@ -49,10 +53,14 @@ log:
 reset_action:
   name: "Reset action counters"
   description: "Reset a specific action's counters and history."
-  target:
-    device:
-      integration: nfc_tasgs
   fields:
+    device_id:
+      name: "Device"
+      description: "NFC Tasgs device to reset."
+      required: true
+      selector:
+        device:
+          integration: nfc_tasgs
     action_key:
       name: "Action Key"
       description: "Action key to reset."
@@ -64,10 +72,14 @@ reset_action:
 set_assignee:
   name: "Set assignee"
   description: "Change the assigned person for a device."
-  target:
-    device:
-      integration: nfc_tasgs
   fields:
+    device_id:
+      name: "Device"
+      description: "NFC Tasgs device to update."
+      required: true
+      selector:
+        device:
+          integration: nfc_tasgs
     person:
       name: "Person"
       description: "Person entity ID, or empty string to clear."

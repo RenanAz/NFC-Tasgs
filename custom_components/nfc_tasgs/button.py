@@ -50,9 +50,9 @@ class NfcTasgsManualLogButton(ButtonEntity):
             DOMAIN,
             SERVICE_LOG,
             {
+                "device_id": self._entry_data.get("device_id", ""),
                 "action_key": default_key,
                 "scanner": "Manual",
             },
-            target={"device_id": self._entry_data.get("device_id", "")},
             blocking=True,
         )
