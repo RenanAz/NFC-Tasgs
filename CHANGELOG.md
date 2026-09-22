@@ -10,7 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - HACS-compatible repository layout (`custom_components/nfc_tasgs/`).
-- CI workflows: Hassfest, HACS validation, and pytest.
+- CI workflows: Hassfest and pytest.
+- HACS validation is deferred until the integration is ready for publication.
 - Developer tooling: ruff, pre-commit, and `pytest-homeassistant-custom-component`.
 - Tests covering the integration manifest contract.
 

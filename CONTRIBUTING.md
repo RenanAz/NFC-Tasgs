@@ -11,7 +11,7 @@ Assistant.
 1. Branch off `master`; never commit directly to it.
 2. Keep commits small and use [Conventional Commits](https://www.conventionalcommits.org/)
    (`feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`).
-3. Open a pull request. CI must pass (Hassfest, HACS, pytest).
+3. Open a pull request. CI must pass (Hassfest and pytest).
 4. No bug fix without a regression test.
 
 ## Local setup
