@@ -70,8 +70,7 @@ class NfcTasgsOverdueSensor(BinarySensorEntity):
             "identifiers": {(DOMAIN, entry_data.get("device_id", slug))},
         }
 
-    @property
-    def is_on(self) -> bool | None:","@callback
+    @callback
     def _handle_update(self) -> None:
         self.async_write_ha_state()
 
@@ -84,7 +83,7 @@ class NfcTasgsOverdueSensor(BinarySensorEntity):
         )
 
     @property
-    def is_on(self) -> bool | None:"}
+    def is_on(self) -> bool | None:
         history = self._entry_data.get("history", {})
         rec = history.get(self._action_key, {})
         last_ts = rec.get("last_scan_ts", 0)

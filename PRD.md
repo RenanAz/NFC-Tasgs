@@ -219,7 +219,7 @@ Divergence from the README: the README promises `overdue` driven by the seed eve
 
 ## 8. Current state and known defects
 
-### 8.1 BLOCKER — syntax error in `binary_sensor.py`
+### 8.1 BLOCKER (fixed) — syntax error in `binary_sensor.py`
 
 The `NfcTasgsOverdueSensor` class was corrupted by a bad merge/paste: the `is_on`
 definition and the dispatcher block got tangled with string literals

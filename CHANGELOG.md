@@ -16,7 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `binary_sensor.py` syntax error that blocked integration setup (`setup_error`) — pending.
+- `binary_sensor.py` syntax error that blocked integration setup (`setup_error`) and
+  crashed Hassfest.
 
 ## [0.1.0]
 
