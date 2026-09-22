@@ -4,9 +4,9 @@
     "codeowners": ["@renan"],
     "config_flow": true,
     "dependencies": [],
-    "documentation": "https://github.com/renan/nfc_tasgs",
+    "documentation": "https://github.com/RenanAz/NFC-Tasgs",
     "iot_class": "local_push",
-    "issue_tracker": "https://github.com/renan/nfc_tasgs/issues",
+    "issue_tracker": "https://github.com/RenanAz/NFC-Tasgs/issues",
     "requirements": [],
     "version": "0.1.0"
 }
