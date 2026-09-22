@@ -1,7 +1,7 @@
 {
     "domain": "nfc_tasgs",
     "name": "NFC Tasgs",
-    "codeowners": ["@renan"],
+    "codeowners": ["@RenanAz"],
     "config_flow": true,
     "dependencies": [],
     "documentation": "https://github.com/RenanAz/NFC-Tasgs",
