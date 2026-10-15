@@ -20,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `binary_sensor.py` syntax error that blocked integration setup (`setup_error`) and
   crashed Hassfest.
 
+### Security
+
+- Replaced example NFC tag IDs, person entity IDs and device IDs in the docs and
+  service definitions with non-real placeholders.
+- GitHub Actions are pinned to commit SHAs and limited to `contents: read`; added
+  Dependabot configuration for `github-actions`.
+
 ## [0.1.0]
 
 Initial implementation: config flow, per-device and per-action sensors, overdue

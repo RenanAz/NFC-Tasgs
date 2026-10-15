@@ -89,13 +89,13 @@ A Home Assistant custom integration that turns any physical object into a tracka
 ```yaml
 devices:
   - name: "Coffee Machine"
-    tag_id: "a0c60634-0a93-4bfb-bab2-a803e83444da"
+    tag_id: "00000000-0000-0000-0000-000000000001"
     default_action: "cleaned"
     owners:
-      - person.renan
-      - person.michelle
-    task_list: todo.coisas_da_casa
-    shopping_list: todo.coisas_da_casa
+      - person.jon_doe
+      - person.jane_doe
+    task_list: todo.home_chores
+    shopping_list: todo.home_chores
     actions:
       - key: "cleaned"
         label: "Cleaned"
@@ -112,12 +112,12 @@ devices:
         expected_interval_hours: 2160
         triggers_purchase: true
 
-  - name: "Abby's Litter Box"
-    tag_id: "140f5515-ea29-4004-8d11-712097f1e9fd"
+  - name: "Cat 1 Litter Box"
+    tag_id: "00000000-0000-0000-0000-000000000002"
     default_action: "cleaned"
     owners:
-      - person.renan
-      - person.michelle
+      - person.jon_doe
+      - person.jane_doe
     actions:
       - key: "cleaned"
         label: "Cleaned"
@@ -355,7 +355,7 @@ When `triggers_task: true` is set on an action and the device has a `task_list`:
 When `triggers_purchase: true` is set on an action and the device has a `shopping_list`:
 
 - **On action logged**: add item "**[Device Name]** supplies — **[Action Label]**" to the shopping list
-- Example: logging "Beans Refilled" on "Coffee Machine" adds "Coffee Machine supplies — Beans Refilled" to `todo.coisas_da_casa`
+- Example: logging "Beans Refilled" on "Coffee Machine" adds "Coffee Machine supplies — Beans Refilled" to `todo.home_chores`
 - **Deduplication**: if the same purchase item is already on the list (incomplete), don't duplicate it
 
 ---
@@ -372,8 +372,8 @@ Every scan or manual log fires a custom event `nfc_tasgs_action`:
     "device_name": "Coffee Machine",
     "action_key": "beans_refilled",
     "action_label": "Beans Refilled",
-    "scanner": "Renan",
-    "scanner_device_id": "eaa1ef3fdbfea647642d5eb5b76b3abe",
+    "scanner": "Jon Doe",
+    "scanner_device_id": "0123456789abcdef0123456789abcdef",
     "timestamp": "2026-07-13T22:30:00+01:00",
     "scan_count": 47,
     "action_scan_count": 12,
@@ -484,13 +484,13 @@ Stored in HA's config entry system (`.storage/core.config_entries`), one entry p
     {
       "id": "coffee_machine_01",
       "name": "Coffee Machine",
-      "tag_id": "a0c60634-0a93-4bfb-bab2-a803e83444da",
+      "tag_id": "00000000-0000-0000-0000-000000000001",
       "default_action": "cleaned",
-      "owners": ["person.renan", "person.michelle"],
+      "owners": ["person.jon_doe", "person.jane_doe"],
       "assignee": null,
       "double_scan_window_seconds": 3,
-      "task_list": "todo.coisas_da_casa",
-      "shopping_list": "todo.coisas_da_casa",
+      "task_list": "todo.home_chores",
+      "shopping_list": "todo.home_chores",
       "icon": "mdi:coffee",
       "area_id": null,
       "actions": [

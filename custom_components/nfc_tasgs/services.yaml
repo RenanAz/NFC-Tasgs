@@ -6,14 +6,14 @@ scan:
       name: "Tag ID"
       description: "UUID of the scanned NFC tag."
       required: true
-      example: "a0c60634-0a93-4bfb-bab2-a803e83444da"
+      example: "00000000-0000-0000-0000-000000000001"
       selector:
         text: {}
     scanner_device_id:
       name: "Scanner Device ID"
       description: "HA device ID of the phone that scanned the tag."
       required: true
-      example: "eaa1ef3fdbfea647642d5eb5b76b3abe"
+      example: "0123456789abcdef0123456789abcdef"
       selector:
         text: {}
     action:
@@ -46,7 +46,7 @@ log:
       name: "Scanner"
       description: "Name of the person who performed the action."
       required: true
-      example: "Renan"
+      example: "Jon Doe"
       selector:
         text: {}
 
@@ -84,6 +84,6 @@ set_assignee:
       name: "Person"
       description: "Person entity ID, or empty string to clear."
       required: true
-      example: "person.renan"
+      example: "person.jon_doe"
       selector:
         text: {}
