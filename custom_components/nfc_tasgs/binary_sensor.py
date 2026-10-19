@@ -2,18 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from homeassistant.components.binary_sensor import (
-    BinarySensorDeviceClass,
-    BinarySensorEntity,
-)
+from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from . import SIGNAL_UPDATE
+from . import _compute_interval, _compute_next_due, signal_update
 from .const import (
     CONF_ACTION_INTERVAL,
     CONF_ACTION_KEY,
@@ -21,7 +18,6 @@ from .const import (
     CONF_ACTIONS,
     DOMAIN,
 )
-from . import _compute_interval, _compute_next_due
 
 
 async def async_setup_entry(
@@ -78,7 +74,9 @@ class NfcTasgsOverdueSensor(BinarySensorEntity):
         await super().async_added_to_hass()
         self.async_on_remove(
             async_dispatcher_connect(
-                self.hass, SIGNAL_UPDATE, self._handle_update
+                self.hass,
+                signal_update(self._entry_data["entry_id"]),
+                self._handle_update,
             )
         )
 
@@ -92,9 +90,7 @@ class NfcTasgsOverdueSensor(BinarySensorEntity):
         if count == 0:
             return None
 
-        interval = _compute_interval(
-            rec.get("first_scan_ts", 0), last_ts, count
-        )
+        interval = _compute_interval(rec.get("first_scan_ts", 0), last_ts, count)
         seed = None
         for a in self._config.get(CONF_ACTIONS, []):
             if a[CONF_ACTION_KEY] == self._action_key:
@@ -108,4 +104,4 @@ class NfcTasgsOverdueSensor(BinarySensorEntity):
             else:
                 return None
 
-        return datetime.now(timezone.utc).timestamp() > due
+        return datetime.now(UTC).timestamp() > due

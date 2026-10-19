@@ -7,5 +7,6 @@ select = ["E", "F", "W", "I", "UP", "B", "ASYNC"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+pythonpath = ["."]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"

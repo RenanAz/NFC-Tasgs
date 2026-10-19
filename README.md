@@ -513,10 +513,10 @@ Stored in memory during runtime, persisted to HA's `restore_state` for survival 
 
 ```python
 {
-    "first_scan": datetime,        # timestamp of first scan ever
-    "last_scan": datetime,          # timestamp of most recent scan
-    "total_scans": int,             # cumulative count
-    "last_scanner": str,            # person name
+    "first_scan": datetime,  # timestamp of first scan ever
+    "last_scan": datetime,  # timestamp of most recent scan
+    "total_scans": int,  # cumulative count
+    "last_scanner": str,  # person name
     "last_scanner_device_id": str,  # HA device ID
 }
 ```

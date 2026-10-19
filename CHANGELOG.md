@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Person resolution now matches the scanner's `device_tracker` against the
+  `device_trackers` state attribute on `person` entities (works for YAML and
+  storage persons), falling back to person registry options. Previously every
+  scan resolved to "Unknown" on the live instance.
+- Entity refresh signal is scoped per config entry instead of updating every
+  NFC Tasgs entry on each scan.
+- Timestamp sensors now return `datetime` values instead of ISO strings.
 - `binary_sensor.py` syntax error that blocked integration setup (`setup_error`) and
   crashed Hassfest.
 

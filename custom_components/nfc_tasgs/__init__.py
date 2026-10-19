@@ -2,19 +2,18 @@
 
 from __future__ import annotations
 
-import asyncio
-from datetime import datetime, timezone
 import logging
+from datetime import UTC, datetime
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_NAME, Platform
-from homeassistant.core import HomeAssistant, ServiceCall, callback
+from homeassistant.const import CONF_NAME
+from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.typing import ConfigType
 
@@ -26,9 +25,9 @@ from .const import (
     ATTR_DEVICE_NAME,
     ATTR_INTERVAL_HOURS,
     ATTR_MODE,
+    ATTR_SCAN_COUNT,
     ATTR_SCANNER,
     ATTR_SCANNER_DEVICE_ID,
-    ATTR_SCAN_COUNT,
     ATTR_TIMESTAMP,
     CONF_ACTION_INTERVAL,
     CONF_ACTION_KEY,
@@ -66,8 +65,24 @@ SIGNAL_UPDATE = f"{DOMAIN}_update"
 STORAGE_DATA = dict[str, dict[str, Any]]
 
 
+def signal_update(entry_id: str) -> str:
+    """Dispatcher signal scoped to a single config entry."""
+    return f"{SIGNAL_UPDATE}_{entry_id}"
+
+
 def _slugify(name: str) -> str:
     return name.lower().replace(" ", "_").replace("-", "_").replace("'", "")
+
+
+def _match_person(
+    persons: list[tuple[str, list[str]]], tracker_ids: list[str]
+) -> str | None:
+    """Return the first person owning one of the tracker entity IDs."""
+    wanted = set(tracker_ids)
+    for name, trackers in persons:
+        if wanted.intersection(trackers):
+            return name
+    return None
 
 
 def _compute_interval(first_ts: float, last_ts: float, count: int) -> float | None:
@@ -84,7 +99,7 @@ def _compute_next_due(
     if seed_hours is not None:
         if last_ts:
             return last_ts + seed_hours * 3600
-        return datetime.now(timezone.utc).timestamp() + seed_hours * 3600
+        return datetime.now(UTC).timestamp() + seed_hours * 3600
     return None
 
 
@@ -129,15 +144,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             }
 
     hass.data[DOMAIN]["entries"][entry.entry_id] = {
+        "entry_id": entry.entry_id,
         "config": config,
         "history": history,
         "slug": dev_slug,
         "device_id": device_entry.id,
     }
 
-    from . import binary_sensor as _binary_sensor  # noqa: F811
-    from . import button as _button  # noqa: F811
-    from . import sensor as _sensor  # noqa: F811
+    # Pre-import platform modules: HA's platform loader would otherwise import
+    # them inside the event loop (see git history 0c24ac5).
+    from . import binary_sensor as _binary_sensor  # noqa: F401
+    from . import button as _button  # noqa: F401
+    from . import sensor as _sensor  # noqa: F401
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -166,7 +184,9 @@ def _build_config(entry: ConfigEntry) -> dict[str, Any]:
     actions = data.get(CONF_ACTIONS, [])
     if not actions:
         default_key = data.get(CONF_DEFAULT_ACTION, "default")
-        actions = [{CONF_ACTION_KEY: default_key, CONF_ACTION_LABEL: default_key.title()}]
+        actions = [
+            {CONF_ACTION_KEY: default_key, CONF_ACTION_LABEL: default_key.title()}
+        ]
     for a in actions:
         a.setdefault(CONF_ACTION_INTERVAL, None)
         a.setdefault(CONF_ACTION_PURCHASE, False)
@@ -218,23 +238,55 @@ async def _save_history(hass: HomeAssistant) -> None:
 
 
 def _resolve_person(hass: HomeAssistant, scanner_device_id: str) -> tuple[str, str]:
-    """Resolve scanner device ID to person name."""
+    """Resolve scanner device ID to person name.
+
+    Trackers are matched against the `device_trackers` attribute exposed by
+    person states (covers YAML and storage persons). Person registry options
+    are kept as a fallback for older setups that store them there.
+    """
     ent_reg = async_get_entity_registry(hass)
     dev_reg = dr.async_get(hass)
-    device = dev_reg.async_get(scanner_device_id)
-    if device is None:
+    if dev_reg.async_get(scanner_device_id) is None:
         return "Unknown", scanner_device_id
-    for entity_entry in ent_reg.entities.get_entries_for_device_id(scanner_device_id):
-        if entity_entry.domain == "device_tracker":
-            for person_entry in ent_reg.entities.get_entries_for_domain("person"):
-                if "device_trackers" in (person_entry.options or {}):
-                    if entity_entry.entity_id in person_entry.options.get(
-                        "device_trackers", []
-                    ):
-                        return (
-                            person_entry.original_name or person_entry.entity_id,
-                            scanner_device_id,
-                        )
+
+    tracker_ids = [
+        entity_entry.entity_id
+        for entity_entry in ent_reg.entities.get_entries_for_device_id(
+            scanner_device_id
+        )
+        if entity_entry.domain == "device_tracker"
+    ]
+    if not tracker_ids:
+        return "Unknown", scanner_device_id
+
+    person_from_state = _match_person(
+        [
+            (
+                state.name or state.entity_id,
+                list(state.attributes.get("device_trackers") or []),
+            )
+            for state in hass.states.async_all("person")
+        ],
+        tracker_ids,
+    )
+    if person_from_state:
+        return person_from_state, scanner_device_id
+
+    person_from_options = _match_person(
+        [
+            (
+                person_entry.name
+                or person_entry.original_name
+                or person_entry.entity_id,
+                list((person_entry.options or {}).get("device_trackers") or []),
+            )
+            for person_entry in ent_reg.entities.get_entries_for_domain("person")
+        ],
+        tracker_ids,
+    )
+    if person_from_options:
+        return person_from_options, scanner_device_id
+
     return "Unknown", scanner_device_id
 
 
@@ -244,7 +296,7 @@ async def _handle_scan(hass: HomeAssistant, call: ServiceCall) -> None:
     action_key = call.data.get("action")
 
     entry_data = None
-    for eid, ed in hass.data[DOMAIN]["entries"].items():
+    for ed in hass.data[DOMAIN]["entries"].values():
         if ed["config"].get(CONF_TAG_ID) == tag_id:
             entry_data = ed
             break
@@ -272,8 +324,15 @@ async def _handle_scan(hass: HomeAssistant, call: ServiceCall) -> None:
     _record_scan(history, action_key, person_name, scanner_device_id)
     await _save_history(hass)
     _refresh_entities(hass, entry_data)
-    _fire_event(hass, config, entry_data, action_key, action_config, person_name,
-                scanner_device_id)
+    _fire_event(
+        hass,
+        config,
+        entry_data,
+        action_key,
+        action_config,
+        person_name,
+        scanner_device_id,
+    )
 
 
 async def _handle_log(hass: HomeAssistant, call: ServiceCall) -> None:
@@ -331,7 +390,7 @@ async def _handle_set_assignee(hass: HomeAssistant, call: ServiceCall) -> None:
 def _record_scan(
     history: dict, action_key: str, person: str, scanner_device_id: str
 ) -> None:
-    now_ts = datetime.now(timezone.utc).timestamp()
+    now_ts = datetime.now(UTC).timestamp()
     if action_key not in history:
         history[action_key] = {
             "first_scan_ts": now_ts,
@@ -365,9 +424,7 @@ def _fire_event(
         rec.get("last_scan_ts", 0),
         rec.get("total_scans", 1),
     )
-    total_scans = sum(
-        h.get("total_scans", 0) for h in history.values()
-    )
+    total_scans = sum(h.get("total_scans", 0) for h in history.values())
     hass.bus.async_fire(
         EVENT_ACTION,
         {
@@ -377,7 +434,7 @@ def _fire_event(
             ATTR_ACTION_LABEL: action_config.get(CONF_ACTION_LABEL, action_key),
             ATTR_SCANNER: person,
             ATTR_SCANNER_DEVICE_ID: scanner_device_id,
-            ATTR_TIMESTAMP: datetime.now(timezone.utc).isoformat(),
+            ATTR_TIMESTAMP: datetime.now(UTC).isoformat(),
             ATTR_SCAN_COUNT: total_scans,
             ATTR_ACTION_SCAN_COUNT: rec.get("total_scans", 1),
             ATTR_MODE: "manual" if not scanner_device_id else "scan",
@@ -387,8 +444,8 @@ def _fire_event(
 
 
 def _refresh_entities(hass: HomeAssistant, entry_data: dict) -> None:
-    """Trigger entity state updates via dispatcher signal."""
-    async_dispatcher_send(hass, SIGNAL_UPDATE)
+    """Trigger entity state updates for the affected entry only."""
+    async_dispatcher_send(hass, signal_update(entry_data["entry_id"]))
 
 
 def _register_services(hass: HomeAssistant) -> None:

@@ -6,18 +6,16 @@ import json
 from typing import Any
 
 import voluptuous as vol
-
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.const import CONF_NAME
-from homeassistant.helpers.selector import selector
 
 from .const import (
-    CONF_ACTIONS,
     CONF_ACTION_INTERVAL,
     CONF_ACTION_KEY,
     CONF_ACTION_LABEL,
     CONF_ACTION_PURCHASE,
     CONF_ACTION_TASK,
+    CONF_ACTIONS,
     CONF_AREA_ID,
     CONF_ASSIGNEE,
     CONF_DEFAULT_ACTION,
@@ -79,7 +77,10 @@ class NfcTasgsConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=data_schema,
             errors=errors,
             description_placeholders={
-                "actions_help": 'JSON: [{"key":"cleaned","label":"Cleaned","expected_interval_hours":168,"triggers_purchase":false}]'
+                "actions_help": (
+                    'JSON: [{"key":"cleaned","label":"Cleaned",'
+                    '"expected_interval_hours":168,"triggers_purchase":false}]'
+                )
             },
         )
 
@@ -109,9 +110,8 @@ class NfcTasgsOptionsFlow(OptionsFlow):
                     CONF_ICON: user_input.get(
                         CONF_ICON, self.config_entry.data.get(CONF_ICON, "")
                     ),
-                    CONF_OWNERS: _parse_list(
-                        user_input.get("owners", "")
-                    ) or self.config_entry.data.get(CONF_OWNERS, []),
+                    CONF_OWNERS: _parse_list(user_input.get("owners", ""))
+                    or self.config_entry.data.get(CONF_OWNERS, []),
                     CONF_ASSIGNEE: user_input.get(
                         CONF_ASSIGNEE,
                         self.config_entry.data.get(CONF_ASSIGNEE, ""),
