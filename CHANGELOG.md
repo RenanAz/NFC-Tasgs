@@ -30,6 +30,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   device has no explicit notify service.
 - Structured action editor in the config and options flows: add, edit, and
   remove actions with key, label, expected interval, and purchase/task flags.
+- Appliance templates: a new device can start from a curated preset (Coffee
+  Machine, Litter Box, Pet Feeder, Water Fountain, AC Unit, Guinea Pig Habitat,
+  Robot Vacuum) with pre-ticked actions and a live entity preview. Keys come
+  from the catalog; custom actions still use label-driven keys.
+- Per-action button entities (`button.<device>_log_<action>`) so every action
+  is reachable from the appliance's device page.
+- Double-scan menus now show two quick action buttons plus an
+  “Open Appliance tasks” URI button that opens the device page. The default
+  action is omitted from the menu.
 - Device options now use Home Assistant selectors: owners/assignee (person),
   notification target (notify), task/shopping lists (todo), icon, and area.
   New optional `notify_entity` option.
@@ -48,6 +57,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Options flow no longer assigns `self.config_entry` in `__init__` (unsupported
   since HA 2024.11), so device options are configurable again.
+- Entities now attach to the config-entry device instead of creating a second
+  device from the virtual device ID. This removes the duplicate-device pairs
+  seen on upgraded installs; previously created orphans can be deleted from
+  the device registry after the upgrade.
 - `nfc_tasgs.set_assignee` now persists the change to the config entry and
   refreshes entities.
 - Person resolution now matches the scanner's `device_tracker` against the

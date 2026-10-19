@@ -63,7 +63,7 @@ class NfcTasgsOverdueSensor(BinarySensorEntity):
         self._attr_name = f"{action_label} overdue"
         self._attr_icon = "mdi:alert-circle"
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry_data.get("device_id", slug))},
+            "identifiers": {(DOMAIN, entry_data["entry_id"])},
         }
 
     @callback

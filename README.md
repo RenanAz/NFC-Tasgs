@@ -58,8 +58,6 @@ directory and restart.
    - **Device name** — e.g. `Coffee Machine`.
    - **Tag** — pick the tag created in step 1 from the dropdown (shown by its
      name). If the list is empty, create the tag in **Settings → Tags** first.
-   - **Actions** — add at least one action. The first action is a good default.
-   - **Default action** — chosen on the last step of the flow.
    - **Owners / assignee** — optional people used as notification fallbacks.
    - **Notification service** — optional, e.g. `mobile_app_your_phone`. Needed
      for the double-scan action menu; it is auto-detected from the scanning
@@ -70,11 +68,22 @@ directory and restart.
    - **Handle tag scans automatically** — leave on to let the integration
      process its own tags. Turn off if you want to call the service from your
      own automation.
-4. Repeat for every object.
+4. **Choose an appliance template** — Coffee Machine, Litter Box, Pet Feeder,
+   Water Fountain, AC Unit, Guinea Pig Habitat, Robot Vacuum, or Custom.
+5. **Tick the actions to track.** Recommended actions are pre-selected and each
+   row shows how often it is usually done. The time is used for the first
+   reminder; after two logs the integration follows your actual rhythm.
+6. **Review the preview and choose the default action** — the action logged by
+   a single scan. The last step lists the entities that will be created.
+7. Repeat for every object.
 
 Actions can be added, edited, or removed later from the integration's
 **Configure** button. Removing an action leaves its old entities behind as
 unavailable; delete them from the entity registry if you no longer want them.
+
+Each action also gets a `button.<device>_log_<action>` entity, so every action
+is available from the appliance's device page. A double scan shows the two
+quick actions plus **Open Appliance tasks**, which opens that device page.
 
 ---
 
@@ -123,6 +132,8 @@ integration finds the device by tag ID
 | `notify_service` | Legacy notify service used for action menus, e.g. `mobile_app_pixel_9`. |
 | `task_list` | Optional `todo` entity for `triggers_task`. |
 | `shopping_list` | Optional `todo` entity for `triggers_purchase`. |
+| `template_id` | Appliance template used at creation, or `custom`. |
+| `template_version` | Catalog version recorded when the entry was created. |
 
 ### Action fields
 

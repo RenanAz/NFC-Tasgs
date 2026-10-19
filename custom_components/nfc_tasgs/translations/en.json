@@ -34,10 +34,11 @@
                 "data": {
                     "key": "Action key",
                     "label": "Label",
-                    "expected_interval_hours": "Expected interval (hours)",
+                    "expected_interval_hours": "How often? (days)",
                     "triggers_purchase": "Adds an item to the shopping list",
                     "triggers_task": "Creates a task in the task list"
-                }
+                },
+                "description": "How often is used for the first reminder. After two logs, NFC Tasgs follows your actual rhythm."
             },
             "edit_action": {
                 "title": "Edit action",
@@ -51,10 +52,11 @@
                 "data": {
                     "key": "Action key",
                     "label": "Label",
-                    "expected_interval_hours": "Expected interval (hours)",
+                    "expected_interval_hours": "How often? (days)",
                     "triggers_purchase": "Adds an item to the shopping list",
                     "triggers_task": "Creates a task in the task list"
-                }
+                },
+                "description": "How often is used for the first reminder. After two logs, NFC Tasgs follows your actual rhythm."
             },
             "remove_action": {
                 "title": "Remove action",
@@ -68,12 +70,34 @@
                 "data": {
                     "default_action_key": "Default action"
                 }
+            },
+            "template": {
+                "title": "Choose an appliance",
+                "description": "Start with a preset. You can keep or omit any action.",
+                "data": {
+                    "template_id": "Appliance template"
+                }
+            },
+            "template_actions": {
+                "title": "Choose actions",
+                "description": "Tick the actions you want to track. The time shown is used for the first reminder; after two logs, NFC Tasgs follows your actual rhythm.",
+                "data": {
+                    "selected_actions": "Actions to track"
+                }
+            },
+            "template_finish": {
+                "title": "Review and save",
+                "description": "{preview}",
+                "data": {
+                    "default_action_key": "Default action"
+                }
             }
         },
         "error": {
             "invalid_key": "Use lowercase letters, numbers, and underscores only.",
             "duplicate_key": "An action with this key already exists.",
-            "required": "This field is required."
+            "required": "This field is required.",
+            "select_at_least_one": "Select at least one action."
         },
         "abort": {
             "already_configured": "This tag is already assigned to a device.",
@@ -112,10 +136,11 @@
                 "data": {
                     "key": "Action key",
                     "label": "Label",
-                    "expected_interval_hours": "Expected interval (hours)",
+                    "expected_interval_hours": "How often? (days)",
                     "triggers_purchase": "Adds an item to the shopping list",
                     "triggers_task": "Creates a task in the task list"
-                }
+                },
+                "description": "How often is used for the first reminder. After two logs, NFC Tasgs follows your actual rhythm."
             },
             "edit_action": {
                 "title": "Edit action",
@@ -129,10 +154,11 @@
                 "data": {
                     "key": "Action key",
                     "label": "Label",
-                    "expected_interval_hours": "Expected interval (hours)",
+                    "expected_interval_hours": "How often? (days)",
                     "triggers_purchase": "Adds an item to the shopping list",
                     "triggers_task": "Creates a task in the task list"
-                }
+                },
+                "description": "How often is used for the first reminder. After two logs, NFC Tasgs follows your actual rhythm."
             },
             "remove_action": {
                 "title": "Remove action",
@@ -151,7 +177,8 @@
         "error": {
             "invalid_key": "Use lowercase letters, numbers, and underscores only.",
             "duplicate_key": "An action with this key already exists.",
-            "required": "This field is required."
+            "required": "This field is required.",
+            "select_at_least_one": "Select at least one action."
         }
     }
 }

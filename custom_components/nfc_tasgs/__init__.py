@@ -36,6 +36,7 @@ from .const import (
     CONF_ACTION_KEY,
     CONF_ACTION_LABEL,
     CONF_ACTION_PURCHASE,
+    CONF_ACTION_QUICK,
     CONF_ACTION_TASK,
     CONF_ACTIONS,
     CONF_AREA_ID,
@@ -66,6 +67,8 @@ from .const import (
     STORAGE_KEY,
     STORAGE_VERSION,
 )
+from .util import legacy_slugify
+from .util import slugify as _slugify
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -79,10 +82,6 @@ STORAGE_DATA = dict[str, dict[str, Any]]
 def signal_update(entry_id: str) -> str:
     """Dispatcher signal scoped to a single config entry."""
     return f"{SIGNAL_UPDATE}_{entry_id}"
-
-
-def _slugify(name: str) -> str:
-    return name.lower().replace(" ", "_").replace("-", "_").replace("'", "")
 
 
 def _match_person(
@@ -141,6 +140,20 @@ def _migrate_unique_ids(hass: HomeAssistant, entry_id: str, slug: str) -> None:
         ent_reg.async_update_entity(entity_entry.entity_id, new_unique_id=new_unique_id)
 
 
+async def async_remove_config_entry_device(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    device_entry: dr.DeviceEntry,
+) -> bool:
+    """Allow removing duplicate devices left by old builds.
+
+    The active device is the one keyed by the config-entry ID. Older builds
+    created a second device keyed by the virtual device ID; those are safe to
+    delete once their entities have moved.
+    """
+    return (DOMAIN, config_entry.entry_id) not in device_entry.identifiers
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     store = Store[STORAGE_DATA](hass, STORAGE_VERSION, STORAGE_KEY)
     stored = await store.async_load()
@@ -155,7 +168,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN].setdefault("menus", {})
 
     config = _build_config(entry)
-    dev_slug = _slugify(entry.data.get(CONF_NAME, entry.entry_id))
+    dev_slug = legacy_slugify(entry.data.get(CONF_NAME, entry.entry_id))
     device_registry = dr.async_get(hass)
     device_entry = device_registry.async_get_or_create(
         config_entry_id=entry.entry_id,
@@ -548,16 +561,54 @@ async def _start_scan_window(
 
 
 def build_menu_actions(
-    token: str, actions: list[dict[str, Any]]
+    token: str,
+    actions: list[dict[str, Any]],
+    default_key: str | None = None,
+    device_id: str | None = None,
 ) -> list[dict[str, str]]:
-    """Build actionable notification buttons for an action menu."""
-    return [
+    """Build the two quick actions plus the appliance-tasks gateway.
+
+    Android only shows three notification actions. The default action is
+    already what a single scan logs, so the double-scan menu offers two
+    alternatives and a gateway to the appliance's device page for everything
+    else.
+    """
+    candidates = [
+        action for action in actions if action[CONF_ACTION_KEY] != default_key
+    ]
+    quick: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for action in candidates:
+        if action.get(CONF_ACTION_QUICK):
+            quick.append(action)
+            seen.add(action[CONF_ACTION_KEY])
+        if len(quick) == 2:
+            break
+    if len(quick) < 2:
+        for action in candidates:
+            if action[CONF_ACTION_KEY] in seen:
+                continue
+            quick.append(action)
+            seen.add(action[CONF_ACTION_KEY])
+            if len(quick) == 2:
+                break
+
+    buttons = [
         {
             "action": f"{MENU_ACTION_PREFIX}{token}|{action[CONF_ACTION_KEY]}",
             "title": action.get(CONF_ACTION_LABEL, action[CONF_ACTION_KEY]),
         }
-        for action in actions
+        for action in quick
     ]
+    if device_id:
+        buttons.append(
+            {
+                "action": "URI",
+                "title": "Open Appliance tasks",
+                "uri": f"/config/devices/device/{device_id}",
+            }
+        )
+    return buttons
 
 
 def parse_menu_action(raw_action: str) -> tuple[str, str] | None:
@@ -673,7 +724,12 @@ async def _send_action_menu(
                 "message": "What did you do?",
                 "title": config.get(CONF_NAME),
                 "data": {
-                    "actions": build_menu_actions(token, config[CONF_ACTIONS]),
+                    "actions": build_menu_actions(
+                        token,
+                        config[CONF_ACTIONS],
+                        config.get(CONF_DEFAULT_ACTION),
+                        entry_data.get("device_id"),
+                    ),
                     "tag": f"{DOMAIN}_{token}",
                 },
             },

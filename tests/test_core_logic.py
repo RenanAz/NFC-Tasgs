@@ -24,7 +24,9 @@ PERSONS = [
 
 ACTIONS = [
     {"key": "cleaned", "label": "Cleaned"},
-    {"key": "descaled", "label": "Descaled"},
+    {"key": "beans_refilled", "label": "Beans Refilled", "quick": True},
+    {"key": "descaled", "label": "Descaled", "quick": True},
+    {"key": "filter_replaced", "label": "Filter Replaced"},
 ]
 
 
@@ -44,15 +46,33 @@ def test_match_person_returns_none_without_match() -> None:
     assert _match_person(PERSONS, []) is None
 
 
-def test_menu_actions_roundtrip() -> None:
-    buttons = build_menu_actions("token-1", ACTIONS)
-    assert [button["title"] for button in buttons] == ["Cleaned", "Descaled"]
-    assert parse_menu_action(buttons[0]["action"]) == ("token-1", "cleaned")
+def test_menu_skips_default_and_adds_gateway() -> None:
+    buttons = build_menu_actions("token-1", ACTIONS, "cleaned", "device-1")
+    assert [button["title"] for button in buttons] == [
+        "Beans Refilled",
+        "Descaled",
+        "Open Appliance tasks",
+    ]
+    assert parse_menu_action(buttons[0]["action"]) == ("token-1", "beans_refilled")
     assert parse_menu_action(buttons[1]["action"]) == ("token-1", "descaled")
+    assert buttons[2] == {
+        "action": "URI",
+        "title": "Open Appliance tasks",
+        "uri": "/config/devices/device/device-1",
+    }
+
+
+def test_menu_falls_back_to_first_actions_without_quick_flags() -> None:
+    buttons = build_menu_actions("token-1", ACTIONS[:2], "cleaned", "device-1")
+    assert [button["title"] for button in buttons] == [
+        "Beans Refilled",
+        "Open Appliance tasks",
+    ]
 
 
 def test_parse_menu_action_rejects_foreign_actions() -> None:
     assert parse_menu_action("OPEN_DOOR") is None
+    assert parse_menu_action("URI") is None
     assert parse_menu_action(f"{MENU_ACTION_PREFIX}no-separator") is None
     assert parse_menu_action(f"{MENU_ACTION_PREFIX}|cleaned") is None
 

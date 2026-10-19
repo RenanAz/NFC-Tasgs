@@ -22,6 +22,7 @@ from .const import (
     CONF_ACTION_KEY,
     CONF_ACTION_LABEL,
     CONF_ACTION_PURCHASE,
+    CONF_ACTION_QUICK,
     CONF_ACTION_TASK,
     CONF_ACTIONS,
     CONF_AREA_ID,
@@ -32,11 +33,24 @@ from .const import (
     CONF_ICON,
     CONF_NOTIFY_SERVICE,
     CONF_OWNERS,
+    CONF_SELECTED_ACTIONS,
     CONF_SHOPPING_LIST,
     CONF_TAG_ID,
     CONF_TASK_LIST,
+    CONF_TEMPLATE_ID,
+    CONF_TEMPLATE_VERSION,
     DEFAULT_DOUBLE_SCAN_WINDOW,
     DOMAIN,
+)
+from .templates import (
+    TEMPLATE_CUSTOM,
+    action_option_label,
+    default_action_key,
+    get_template,
+    recommended_action_keys,
+    selected_actions,
+    template_options,
+    template_preview,
 )
 
 ACTION_KEY_RE = re.compile(r"^[a-z0-9_]+$")
@@ -59,12 +73,18 @@ class _ActionsEditorMixin:
     _device: dict[str, Any]
     _editing_key: str | None
     _include_identity: bool
+    _template_id: str | None
 
     def _init_state(self, data: dict[str, Any], *, include_identity: bool) -> None:
         self._device = dict(data)
         self._actions = [dict(action) for action in data.get(CONF_ACTIONS, [])]
         self._editing_key = None
         self._include_identity = include_identity
+        self._template_id = data.get(CONF_TEMPLATE_ID)
+
+    async def _after_device_step(self) -> ConfigFlowResult:
+        """Hook for flows that offer a template picker."""
+        return await self.async_step_actions()
 
     # ------------------------------------------------------------- device
     async def async_step_user(
@@ -74,7 +94,7 @@ class _ActionsEditorMixin:
             self._device.update(self._normalize_device(user_input))
             errors = self._validate_device()
             if not errors:
-                return await self.async_step_actions()
+                return await self._after_device_step()
             return self.async_show_form(
                 step_id="user", data_schema=self._device_schema(), errors=errors
             )
@@ -278,6 +298,10 @@ class _ActionsEditorMixin:
                 CONF_ACTION_LABEL, default=current.get(CONF_ACTION_LABEL, "")
             ): selector({"text": {}}),
         }
+        interval_hours = current.get(CONF_ACTION_INTERVAL)
+        interval_days = (
+            round(interval_hours / 24, 2) if interval_hours is not None else None
+        )
         fields.update(
             self._optional_field(
                 CONF_ACTION_INTERVAL,
@@ -285,13 +309,13 @@ class _ActionsEditorMixin:
                     {
                         "number": {
                             "min": 0,
-                            "step": 1,
+                            "step": 0.5,
                             "mode": "box",
-                            "unit_of_measurement": "h",
+                            "unit_of_measurement": "days",
                         }
                     }
                 ),
-                current.get(CONF_ACTION_INTERVAL),
+                interval_days,
             )
         )
         fields[
@@ -305,7 +329,7 @@ class _ActionsEditorMixin:
         return vol.Schema(fields)
 
     def _normalize_action(self, user_input: dict[str, Any]) -> dict[str, Any]:
-        interval = _clean(user_input.get(CONF_ACTION_INTERVAL))
+        interval_days = _clean(user_input.get(CONF_ACTION_INTERVAL))
         return {
             CONF_ACTION_KEY: (user_input.get(CONF_ACTION_KEY) or "").strip().lower(),
             CONF_ACTION_LABEL: (
@@ -313,10 +337,13 @@ class _ActionsEditorMixin:
                 or (user_input.get(CONF_ACTION_KEY) or "").strip()
             ),
             CONF_ACTION_INTERVAL: (
-                float(interval) if interval not in (None, "") else None
+                round(float(interval_days) * 24, 2)
+                if interval_days not in (None, "")
+                else None
             ),
             CONF_ACTION_PURCHASE: bool(user_input.get(CONF_ACTION_PURCHASE, False)),
             CONF_ACTION_TASK: bool(user_input.get(CONF_ACTION_TASK, False)),
+            CONF_ACTION_QUICK: bool(user_input.get(CONF_ACTION_QUICK, False)),
         }
 
     def _validate_action(
@@ -378,6 +405,7 @@ class _ActionsEditorMixin:
             return await self.async_step_actions()
         if user_input is not None:
             action = self._normalize_action(user_input)
+            action[CONF_ACTION_QUICK] = bool(original.get(CONF_ACTION_QUICK, False))
             errors = self._validate_action(action, original_key=self._editing_key)
             if not errors:
                 index = self._actions.index(original)
@@ -456,6 +484,128 @@ class NfcTasgsConfigFlow(_ActionsEditorMixin, ConfigFlow, domain=DOMAIN):
             if tag_id:
                 self._async_abort_entries_match({CONF_TAG_ID: tag_id})
         return await super().async_step_user(user_input)
+
+    async def _after_device_step(self) -> ConfigFlowResult:
+        return await self.async_step_template()
+
+    async def async_step_template(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Pick the appliance preset, or start from a blank action list."""
+        if user_input is not None:
+            template_id = user_input[CONF_TEMPLATE_ID]
+            self._template_id = template_id
+            if template_id == TEMPLATE_CUSTOM:
+                self._device[CONF_TEMPLATE_ID] = TEMPLATE_CUSTOM
+                self._device.pop(CONF_TEMPLATE_VERSION, None)
+                self._actions = []
+                return await self.async_step_actions()
+            template = get_template(template_id)
+            if template is not None:
+                self._template = template
+                return await self.async_step_template_actions()
+        return self.async_show_form(
+            step_id="template",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_TEMPLATE_ID): selector(
+                        {"select": {"options": template_options(), "mode": "list"}}
+                    )
+                }
+            ),
+        )
+
+    async def async_step_template_actions(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Tick the preset actions to keep."""
+        template = getattr(self, "_template", None)
+        if template is None:
+            return await self.async_step_template()
+        options = [
+            {
+                "value": action[CONF_ACTION_KEY],
+                "label": action_option_label(action),
+            }
+            for action in template["actions"]
+        ]
+        recommended = recommended_action_keys(template)
+        if user_input is not None:
+            selected = user_input.get(CONF_SELECTED_ACTIONS) or []
+            actions = selected_actions(template, selected)
+            if actions:
+                self._actions = actions
+                self._device[CONF_TEMPLATE_ID] = template["id"]
+                self._device[CONF_TEMPLATE_VERSION] = template.get(
+                    "template_version", 1
+                )
+                return await self.async_step_template_finish()
+            return self.async_show_form(
+                step_id="template_actions",
+                data_schema=vol.Schema(
+                    {
+                        vol.Required(
+                            CONF_SELECTED_ACTIONS, default=recommended
+                        ): selector(
+                            {
+                                "select": {
+                                    "options": options,
+                                    "multiple": True,
+                                    "mode": "list",
+                                }
+                            }
+                        )
+                    }
+                ),
+                errors={"base": "select_at_least_one"},
+            )
+        return self.async_show_form(
+            step_id="template_actions",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_SELECTED_ACTIONS, default=recommended): selector(
+                        {
+                            "select": {
+                                "options": options,
+                                "multiple": True,
+                                "mode": "list",
+                            }
+                        }
+                    )
+                }
+            ),
+        )
+
+    async def async_step_template_finish(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Choose the default action and show the generated entity preview."""
+        template = getattr(self, "_template", None)
+        if template is None or not self._actions:
+            return await self.async_step_template()
+        options = [action[CONF_ACTION_KEY] for action in self._actions]
+        default_key = default_action_key(template)
+        if default_key not in options:
+            default_key = options[0]
+        if user_input is not None:
+            return self._async_save(user_input[CONF_DEFAULT_ACTION])
+        preview = template_preview(
+            self._device.get(CONF_NAME, "Device"),
+            template,
+            self._actions,
+            default_key,
+        )
+        return self.async_show_form(
+            step_id="template_finish",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_DEFAULT_ACTION, default=default_key): selector(
+                        {"select": {"options": options}}
+                    )
+                }
+            ),
+            description_placeholders={"preview": preview},
+        )
 
     def _async_save(self, default_key: str) -> ConfigFlowResult:
         return self.async_create_entry(
