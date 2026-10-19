@@ -40,6 +40,7 @@ from .const import (
     CONF_DEFAULT_ACTION,
     CONF_DOUBLE_SCAN_WINDOW,
     CONF_ICON,
+    CONF_NOTIFY_ENTITY,
     CONF_OWNERS,
     CONF_SHOPPING_LIST,
     CONF_TAG_ID,
@@ -197,6 +198,7 @@ def _build_config(entry: ConfigEntry) -> dict[str, Any]:
     data.setdefault(CONF_ASSIGNEE, None)
     data.setdefault(CONF_TASK_LIST, None)
     data.setdefault(CONF_SHOPPING_LIST, None)
+    data.setdefault(CONF_NOTIFY_ENTITY, None)
     data.setdefault(CONF_ICON, "mdi:clipboard-check")
     data.setdefault(CONF_AREA_ID, None)
     return data
@@ -384,7 +386,16 @@ async def _handle_set_assignee(hass: HomeAssistant, call: ServiceCall) -> None:
     entry_data = _get_entry_data(hass, call)
     if not entry_data:
         raise ServiceValidationError("No device targeted")
-    entry_data["config"][CONF_ASSIGNEE] = call.data.get("person") or None
+    person = call.data.get("person") or None
+    entry = hass.config_entries.async_get_entry(entry_data["entry_id"])
+    if entry is None:
+        raise ServiceValidationError("Device entry not found")
+    hass.config_entries.async_update_entry(
+        entry,
+        data={**entry.data, CONF_ASSIGNEE: person},
+        options={**entry.options, CONF_ASSIGNEE: person},
+    )
+    entry_data["config"][CONF_ASSIGNEE] = person
 
 
 def _record_scan(

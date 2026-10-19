@@ -3,39 +3,152 @@
     "config": {
         "step": {
             "user": {
-                "title": "Add NFC Tasg Device",
-                "description": "Set up a new device to track via NFC tag scans.\n\nActions JSON format (optional):\n{actions_help}",
+                "title": "Add NFC Tasgs device",
+                "description": "Set up a device to track through NFC tag scans.",
                 "data": {
                     "name": "Device name",
-                    "tag_id": "Tag ID (UUID)",
-                    "default_action_key": "Default action key",
-                    "actions_json": "Actions (JSON)",
+                    "tag_id": "Tag ID",
                     "icon": "Icon",
-                    "owners": "Owners (comma-separated person IDs)",
-                    "area_id": "Area ID",
-                    "assignee": "Assignee (person ID)",
-                    "double_scan_window_seconds": "Double scan window (seconds)"
+                    "area_id": "Area",
+                    "owners": "Owners",
+                    "assignee": "Assignee",
+                    "double_scan_window_seconds": "Double scan window (seconds)",
+                    "notify_entity": "Notification target",
+                    "task_list": "Task list",
+                    "shopping_list": "Shopping list"
+                }
+            },
+            "actions": {
+                "title": "Actions",
+                "description": "Add the actions that can be logged for this device. At least one action is required.",
+                "menu_options": {
+                    "add_action": "Add action",
+                    "edit_action": "Edit action",
+                    "remove_action": "Remove action",
+                    "finish": "Finish setup"
+                }
+            },
+            "add_action": {
+                "title": "Add action",
+                "data": {
+                    "key": "Action key",
+                    "label": "Label",
+                    "expected_interval_hours": "Expected interval (hours)",
+                    "triggers_purchase": "Adds an item to the shopping list",
+                    "triggers_task": "Creates a task in the task list"
+                }
+            },
+            "edit_action": {
+                "title": "Edit action",
+                "description": "Choose the action to edit.",
+                "data": {
+                    "key": "Action"
+                }
+            },
+            "edit_action_form": {
+                "title": "Edit action",
+                "data": {
+                    "key": "Action key",
+                    "label": "Label",
+                    "expected_interval_hours": "Expected interval (hours)",
+                    "triggers_purchase": "Adds an item to the shopping list",
+                    "triggers_task": "Creates a task in the task list"
+                }
+            },
+            "remove_action": {
+                "title": "Remove action",
+                "data": {
+                    "key": "Action"
+                }
+            },
+            "finish": {
+                "title": "Default action",
+                "description": "Choose the action logged on a single scan.",
+                "data": {
+                    "default_action_key": "Default action"
                 }
             }
+        },
+        "error": {
+            "invalid_key": "Use lowercase letters, numbers, and underscores only.",
+            "duplicate_key": "An action with this key already exists.",
+            "required": "This field is required."
+        },
+        "abort": {
+            "already_configured": "This tag is already assigned to a device."
         }
     },
     "options": {
         "step": {
-            "init": {
-                "title": "Configure NFC Tasg Device",
+            "user": {
+                "title": "Configure NFC Tasgs device",
                 "description": "Update device settings and actions.",
                 "data": {
-                    "default_action_key": "Default action key",
-                    "actions_json": "Actions (JSON)",
                     "icon": "Icon",
-                    "owners": "Owners (comma-separated)",
+                    "area_id": "Area",
+                    "owners": "Owners",
                     "assignee": "Assignee",
                     "double_scan_window_seconds": "Double scan window (seconds)",
-                    "task_list": "Task list entity",
-                    "shopping_list": "Shopping list entity",
-                    "area_id": "Area ID"
+                    "notify_entity": "Notification target",
+                    "task_list": "Task list",
+                    "shopping_list": "Shopping list"
+                }
+            },
+            "actions": {
+                "title": "Actions",
+                "description": "Add, edit, or remove the actions logged for this device. At least one action is required.",
+                "menu_options": {
+                    "add_action": "Add action",
+                    "edit_action": "Edit action",
+                    "remove_action": "Remove action",
+                    "finish": "Save"
+                }
+            },
+            "add_action": {
+                "title": "Add action",
+                "data": {
+                    "key": "Action key",
+                    "label": "Label",
+                    "expected_interval_hours": "Expected interval (hours)",
+                    "triggers_purchase": "Adds an item to the shopping list",
+                    "triggers_task": "Creates a task in the task list"
+                }
+            },
+            "edit_action": {
+                "title": "Edit action",
+                "description": "Choose the action to edit.",
+                "data": {
+                    "key": "Action"
+                }
+            },
+            "edit_action_form": {
+                "title": "Edit action",
+                "data": {
+                    "key": "Action key",
+                    "label": "Label",
+                    "expected_interval_hours": "Expected interval (hours)",
+                    "triggers_purchase": "Adds an item to the shopping list",
+                    "triggers_task": "Creates a task in the task list"
+                }
+            },
+            "remove_action": {
+                "title": "Remove action",
+                "data": {
+                    "key": "Action"
+                }
+            },
+            "finish": {
+                "title": "Default action",
+                "description": "Choose the action logged on a single scan.",
+                "data": {
+                    "default_action_key": "Default action"
                 }
             }
+        },
+        "error": {
+            "invalid_key": "Use lowercase letters, numbers, and underscores only.",
+            "duplicate_key": "An action with this key already exists.",
+            "required": "This field is required."
         }
     }
 }

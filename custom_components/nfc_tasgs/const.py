@@ -10,6 +10,7 @@ CONF_ASSIGNEE = "assignee"
 CONF_DOUBLE_SCAN_WINDOW = "double_scan_window_seconds"
 CONF_TASK_LIST = "task_list"
 CONF_SHOPPING_LIST = "shopping_list"
+CONF_NOTIFY_ENTITY = "notify_entity"
 CONF_ICON = "icon"
 CONF_AREA_ID = "area_id"
 
