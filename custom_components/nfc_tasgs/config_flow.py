@@ -14,7 +14,7 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import CONF_NAME
 from homeassistant.core import callback
-from homeassistant.helpers import selector
+from homeassistant.helpers.selector import selector
 
 from .const import (
     CONF_ACTION_INTERVAL,
