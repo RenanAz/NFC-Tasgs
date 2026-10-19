@@ -126,6 +126,21 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 
+def _migrate_unique_ids(hass: HomeAssistant, entry_id: str, slug: str) -> None:
+    """Move slug-based unique IDs to entry-scoped IDs, preserving entities."""
+    ent_reg = async_get_entity_registry(hass)
+    prefix = f"{slug}_"
+    for entity_entry in ent_reg.entities.get_entries_for_config_entry_id(entry_id):
+        if not entity_entry.unique_id.startswith(prefix):
+            continue
+        new_unique_id = f"{entry_id}_{entity_entry.unique_id[len(prefix) :]}"
+        if ent_reg.async_get_entity_id(
+            entity_entry.domain, entity_entry.platform, new_unique_id
+        ):
+            continue
+        ent_reg.async_update_entity(entity_entry.entity_id, new_unique_id=new_unique_id)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     store = Store[STORAGE_DATA](hass, STORAGE_VERSION, STORAGE_KEY)
     stored = await store.async_load()
@@ -171,6 +186,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "slug": dev_slug,
         "device_id": device_entry.id,
     }
+
+    _migrate_unique_ids(hass, entry.entry_id, dev_slug)
 
     # Pre-import platform modules: HA's platform loader would otherwise import
     # them inside the event loop (see git history 0c24ac5).

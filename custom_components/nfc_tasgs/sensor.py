@@ -86,7 +86,7 @@ class NfcTasgsDeviceSensor(NfcTasgsBaseSensor):
         self._slug = slug
         self._config = config
         self._action_key = action_key
-        self._attr_unique_id = f"{slug}_{sensor_type}"
+        self._attr_unique_id = f"{entry_data['entry_id']}_{sensor_type}"
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry_data.get("device_id", slug))},
         }
@@ -159,7 +159,7 @@ class NfcTasgsActionSensor(NfcTasgsBaseSensor):
         self._slug = slug
         self._config = config
         self._action_key = action_key
-        self._attr_unique_id = f"{slug}_{action_key}_{sensor_type}"
+        self._attr_unique_id = f"{entry_data['entry_id']}_{action_key}_{sensor_type}"
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry_data.get("device_id", slug))},
         }

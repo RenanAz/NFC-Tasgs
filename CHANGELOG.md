@@ -56,6 +56,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Timestamp sensors now return `datetime` values instead of ISO strings.
 - `next_due` is now unknown until an action has been scanned at least once
   (previously the seed produced a fresh `now + interval` date on every restart).
+- Entity unique IDs are now scoped to the config entry (existing entities are
+  migrated on setup), so two devices with the same name no longer collide.
+- Action keys are normalized to lowercase; the config flow rejects duplicates
+  and invalid keys instead of silently dropping them.
 - `binary_sensor.py` syntax error that blocked integration setup (`setup_error`) and
   crashed Hassfest.
 

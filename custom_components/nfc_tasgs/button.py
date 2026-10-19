@@ -37,7 +37,7 @@ class NfcTasgsManualLogButton(ButtonEntity):
         self._entry_data = entry_data
         self._slug = slug
         self._config = config
-        self._attr_unique_id = f"{slug}_log_manual"
+        self._attr_unique_id = f"{entry_data['entry_id']}_log_manual"
         self._attr_name = "Log manually"
         self._attr_icon = "mdi:gesture-tap-button"
         self._attr_device_info = {
