@@ -7,7 +7,7 @@
                 "description": "Set up a device to track through NFC tag scans.",
                 "data": {
                     "name": "Device name",
-                    "tag_id": "Tag ID",
+                    "tag_id": "Tag",
                     "icon": "Icon",
                     "area_id": "Area",
                     "owners": "Owners",
@@ -76,7 +76,8 @@
             "required": "This field is required."
         },
         "abort": {
-            "already_configured": "This tag is already assigned to a device."
+            "already_configured": "This tag is already assigned to a device.",
+            "no_tags": "No tags found. Create one in Settings → Tags, then add the integration."
         }
     },
     "options": {

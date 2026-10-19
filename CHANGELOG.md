@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Tag picker in the config flow: tags are selected by name from Home
+  Assistant's tag registry instead of pasting a UUID. If no tags exist, the
+  flow explains how to create one first.
 - Automatic `tag_scanned` handling: the integration resolves its own tags and
   starts the scan flow directly. Can be disabled per device with `auto_scan`.
 - Double-scan detection in the integration (`double_scan_window_seconds`):

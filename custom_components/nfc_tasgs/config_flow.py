@@ -14,6 +14,7 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import CONF_NAME
 from homeassistant.core import callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.selector import selector
 
 from .const import (
@@ -88,6 +89,27 @@ class _ActionsEditorMixin:
             if name not in ("send_message", "persistent_notification")
         )
 
+    def _tag_id_from_selection(self, value: Any) -> str | None:
+        """Resolve a selected tag entity to its tag UUID."""
+        if not value:
+            return None
+        value = str(value)
+        if value.startswith("tag."):
+            entity_entry = er.async_get(self.hass).async_get(value)
+            if entity_entry is not None and entity_entry.unique_id:
+                return entity_entry.unique_id
+            state = self.hass.states.get(value)
+            if state is not None:
+                return state.attributes.get("tag_id")
+            return None
+        return value
+
+    def _has_tags(self) -> bool:
+        return any(
+            entity_entry.domain == "tag"
+            for entity_entry in er.async_get(self.hass).entities.values()
+        )
+
     def _validate_device(self) -> dict[str, str]:
         if not self._include_identity:
             return {}
@@ -117,9 +139,21 @@ class _ActionsEditorMixin:
             fields[vol.Required(CONF_NAME, default=current.get(CONF_NAME, ""))] = (
                 selector({"text": {}})
             )
-            fields[vol.Required(CONF_TAG_ID, default=current.get(CONF_TAG_ID, ""))] = (
-                selector({"text": {}})
-            )
+            tag_selector = selector({"entity": {"domain": "tag"}})
+            tag_entity_id = None
+            if current.get(CONF_TAG_ID):
+                tag_entity_id = er.async_get(self.hass).async_get_entity_id(
+                    "tag", "tag", current[CONF_TAG_ID]
+                )
+            if tag_entity_id:
+                fields[
+                    vol.Required(
+                        CONF_TAG_ID,
+                        description={"suggested_value": tag_entity_id},
+                    )
+                ] = tag_selector
+            else:
+                fields[vol.Required(CONF_TAG_ID)] = tag_selector
         fields.update(
             self._optional_field(
                 CONF_ICON,
@@ -201,6 +235,8 @@ class _ActionsEditorMixin:
 
     def _normalize_device(self, user_input: dict[str, Any]) -> dict[str, Any]:
         data = dict(user_input)
+        if CONF_TAG_ID in data:
+            data[CONF_TAG_ID] = self._tag_id_from_selection(data[CONF_TAG_ID])
         for key in (
             CONF_NAME,
             CONF_TAG_ID,
@@ -413,8 +449,10 @@ class NfcTasgsConfigFlow(_ActionsEditorMixin, ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         if not hasattr(self, "_actions"):
             self._init_state({}, include_identity=True)
+        if user_input is None and not self._has_tags():
+            return self.async_abort(reason="no_tags")
         if user_input is not None:
-            tag_id = _clean(user_input.get(CONF_TAG_ID))
+            tag_id = self._tag_id_from_selection(user_input.get(CONF_TAG_ID))
             if tag_id:
                 self._async_abort_entries_match({CONF_TAG_ID: tag_id})
         return await super().async_step_user(user_input)

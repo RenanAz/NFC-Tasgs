@@ -320,7 +320,8 @@ def _resolve_person(hass: HomeAssistant, scanner_device_id: str) -> tuple[str, s
                 or person_entry.entity_id,
                 list((person_entry.options or {}).get("device_trackers") or []),
             )
-            for person_entry in ent_reg.entities.get_entries_for_domain("person")
+            for person_entry in ent_reg.entities.values()
+            if person_entry.domain == "person"
         ],
         tracker_ids,
     )

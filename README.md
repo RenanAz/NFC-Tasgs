@@ -56,8 +56,8 @@ directory and restart.
    NFC Tasgs**.
 3. Fill in the device step:
    - **Device name** — e.g. `Coffee Machine`.
-   - **Tag ID** — pick the tag created in step 1 (the UUID shown in the tag
-     dialog).
+   - **Tag** — pick the tag created in step 1 from the dropdown (shown by its
+     name). If the list is empty, create the tag in **Settings → Tags** first.
    - **Actions** — add at least one action. The first action is a good default.
    - **Default action** — chosen on the last step of the flow.
    - **Owners / assignee** — optional people used as notification fallbacks.
@@ -111,7 +111,7 @@ integration finds the device by tag ID
 | Field | Description |
 |---|---|
 | `name` | Display name. Also used in entity names and notifications. |
-| `tag_id` | UUID of the NFC tag from Home Assistant's tag registry. |
+| `tag_id` | Tag selected by name from Home Assistant's tag registry (stored as the tag UUID). |
 | `default_action_key` | Action logged by a single scan. |
 | `actions` | One or more action definitions. |
 | `icon` | Icon used by the device. |
