@@ -8,6 +8,7 @@ logic so scans no longer silently resolve to "Unknown".
 from __future__ import annotations
 
 from custom_components.nfc_tasgs import (
+    _compute_next_due,
     _match_person,
     build_menu_actions,
     parse_menu_action,
@@ -54,3 +55,9 @@ def test_parse_menu_action_rejects_foreign_actions() -> None:
     assert parse_menu_action("OPEN_DOOR") is None
     assert parse_menu_action(f"{MENU_ACTION_PREFIX}no-separator") is None
     assert parse_menu_action(f"{MENU_ACTION_PREFIX}|cleaned") is None
+
+
+def test_next_due_requires_a_scan_before_seed_applies() -> None:
+    assert _compute_next_due(0, None, 24) is None
+    assert _compute_next_due(1_000, None, 24) == 1_000 + 24 * 3600
+    assert _compute_next_due(1_000, 2, 24) == 1_000 + 2 * 3600

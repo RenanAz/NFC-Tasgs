@@ -34,15 +34,18 @@ ATTR_ACTION_SCAN_COUNT = "action_scan_count"
 ATTR_INTERVAL_HOURS = "interval_hours"
 
 EVENT_ACTION = f"{DOMAIN}_action"
+EVENT_OVERDUE = f"{DOMAIN}_overdue"
 EVENT_NOTIFICATION_ACTION = "mobile_app_notification_action"
 
 MENU_ACTION_PREFIX = f"{DOMAIN}_menu|"
 MENU_TTL_SECONDS = 300
+OVERDUE_NOTIFY_COOLDOWN_HOURS = 24
 
 SERVICE_SCAN = "scan"
 SERVICE_LOG = "log"
 SERVICE_RESET_ACTION = "reset_action"
 SERVICE_SET_ASSIGNEE = "set_assignee"
+SERVICE_CHECK_OVERDUE = "check_overdue"
 
 PLATFORMS = ["sensor", "binary_sensor", "button"]
 

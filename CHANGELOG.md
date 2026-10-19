@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an actionable notification menu to the scanning phone.
 - `notify_service` option (e.g. `mobile_app_your_phone`) for the action menu;
   it is auto-resolved from the scanner's device when possible.
+- Overdue reminders: an hourly check sends a notification for each overdue
+  action (at most once per 24 h) and fires `nfc_tasgs_overdue`. Also exposed as
+  the `nfc_tasgs.check_overdue` service for manual runs.
 - Structured action editor in the config and options flows: add, edit, and
   remove actions with key, label, expected interval, and purchase/task flags.
 - Device options now use Home Assistant selectors: owners/assignee (person),
@@ -45,6 +48,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Entity refresh signal is scoped per config entry instead of updating every
   NFC Tasgs entry on each scan.
 - Timestamp sensors now return `datetime` values instead of ISO strings.
+- `next_due` is now unknown until an action has been scanned at least once
+  (previously the seed produced a fresh `now + interval` date on every restart).
 - `binary_sensor.py` syntax error that blocked integration setup (`setup_error`) and
   crashed Hassfest.
 

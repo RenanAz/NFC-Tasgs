@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from functools import partial
 from typing import Any
 from uuid import uuid4
@@ -16,7 +16,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
-from homeassistant.helpers.event import async_call_later
+from homeassistant.helpers.event import async_call_later, async_track_time_interval
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.typing import ConfigType
 
@@ -53,9 +53,12 @@ from .const import (
     DOMAIN,
     EVENT_ACTION,
     EVENT_NOTIFICATION_ACTION,
+    EVENT_OVERDUE,
     MENU_ACTION_PREFIX,
     MENU_TTL_SECONDS,
+    OVERDUE_NOTIFY_COOLDOWN_HOURS,
     PLATFORMS,
+    SERVICE_CHECK_OVERDUE,
     SERVICE_LOG,
     SERVICE_RESET_ACTION,
     SERVICE_SCAN,
@@ -104,10 +107,8 @@ def _compute_next_due(
 ) -> float | None:
     if interval_hours is not None:
         return last_ts + interval_hours * 3600
-    if seed_hours is not None:
-        if last_ts:
-            return last_ts + seed_hours * 3600
-        return datetime.now(UTC).timestamp() + seed_hours * 3600
+    if seed_hours is not None and last_ts:
+        return last_ts + seed_hours * 3600
     return None
 
 
@@ -115,6 +116,13 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN].setdefault("pending", {})
     hass.data[DOMAIN].setdefault("menus", {})
+    if not hass.data[DOMAIN].get("overdue_scheduled"):
+        async_track_time_interval(
+            hass,
+            partial(_async_check_overdue, hass),
+            timedelta(hours=1),
+        )
+        hass.data[DOMAIN]["overdue_scheduled"] = True
     return True
 
 
@@ -153,6 +161,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 "total_scans": 0,
                 "last_scanner": "",
                 "last_scanner_device_id": "",
+                "last_overdue_notify_ts": 0.0,
             }
 
     hass.data[DOMAIN]["entries"][entry.entry_id] = {
@@ -604,6 +613,7 @@ async def _handle_reset(hass: HomeAssistant, call: ServiceCall) -> None:
             "total_scans": 0,
             "last_scanner": "",
             "last_scanner_device_id": "",
+            "last_overdue_notify_ts": 0.0,
         }
     await _save_history(hass)
     _refresh_entities(hass, entry_data)
@@ -644,6 +654,7 @@ def _record_scan(
     rec["total_scans"] += 1
     rec["last_scanner"] = person
     rec["last_scanner_device_id"] = scanner_device_id
+    rec["last_overdue_notify_ts"] = 0.0
 
 
 def _fire_event(
@@ -686,6 +697,70 @@ def _refresh_entities(hass: HomeAssistant, entry_data: dict) -> None:
     async_dispatcher_send(hass, signal_update(entry_data["entry_id"]))
 
 
+async def _async_check_overdue(
+    hass: HomeAssistant, now: datetime | None = None
+) -> None:
+    """Notify once per cooldown for every overdue action."""
+    now_ts = (now or datetime.now(UTC)).timestamp()
+    changed = False
+    for entry_data in list(hass.data[DOMAIN].get("entries", {}).values()):
+        config = entry_data["config"]
+        service = _resolve_notify_service(hass, entry_data, "")
+        if not service:
+            continue
+        for action in config[CONF_ACTIONS]:
+            action_key = action[CONF_ACTION_KEY]
+            rec = entry_data["history"].get(action_key)
+            if not rec or rec.get("total_scans", 0) == 0:
+                continue
+            interval = _compute_interval(
+                rec.get("first_scan_ts", 0),
+                rec.get("last_scan_ts", 0),
+                rec.get("total_scans", 0),
+            )
+            due = _compute_next_due(
+                rec.get("last_scan_ts", 0),
+                interval,
+                action.get(CONF_ACTION_INTERVAL),
+            )
+            if due is None or now_ts <= due:
+                continue
+            last_notified = rec.get("last_overdue_notify_ts", 0.0)
+            if now_ts - last_notified < OVERDUE_NOTIFY_COOLDOWN_HOURS * 3600:
+                continue
+            rec["last_overdue_notify_ts"] = now_ts
+            changed = True
+            label = action.get(CONF_ACTION_LABEL, action_key)
+            due_dt = datetime.fromtimestamp(due, tz=UTC)
+            due_str = due_dt.isoformat()
+            hass.bus.async_fire(
+                EVENT_OVERDUE,
+                {
+                    ATTR_DEVICE_ID: entry_data["slug"],
+                    ATTR_DEVICE_NAME: config.get(CONF_NAME),
+                    ATTR_ACTION_KEY: action_key,
+                    ATTR_ACTION_LABEL: label,
+                    "due": due_str,
+                },
+            )
+            try:
+                await hass.services.async_call(
+                    "notify",
+                    service,
+                    {
+                        "message": (
+                            f"{label} was due {due_dt.strftime('%Y-%m-%d %H:%M')}"
+                        ),
+                        "title": config.get(CONF_NAME),
+                    },
+                    blocking=False,
+                )
+            except HomeAssistantError as err:
+                _LOGGER.warning("Could not send overdue notification: %s", err)
+    if changed:
+        await _save_history(hass)
+
+
 def _register_services(hass: HomeAssistant) -> None:
     async def scan_service(call: ServiceCall) -> None:
         await _handle_scan(hass, call)
@@ -699,10 +774,14 @@ def _register_services(hass: HomeAssistant) -> None:
     async def assignee_service(call: ServiceCall) -> None:
         await _handle_set_assignee(hass, call)
 
+    async def check_overdue_service(call: ServiceCall) -> None:
+        await _async_check_overdue(hass)
+
     hass.services.async_register(DOMAIN, SERVICE_SCAN, scan_service)
     hass.services.async_register(DOMAIN, SERVICE_LOG, log_service)
     hass.services.async_register(DOMAIN, SERVICE_RESET_ACTION, reset_service)
     hass.services.async_register(DOMAIN, SERVICE_SET_ASSIGNEE, assignee_service)
+    hass.services.async_register(DOMAIN, SERVICE_CHECK_OVERDUE, check_overdue_service)
 
     if not hass.data[DOMAIN].get("event_listener_registered"):
         hass.bus.async_listen(

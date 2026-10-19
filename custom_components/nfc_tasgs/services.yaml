@@ -93,3 +93,9 @@ set_assignee:
       example: "person.jon_doe"
       selector:
         text: {}
+
+check_overdue:
+  name: "Check overdue actions"
+  description: >-
+    Send notifications for actions that are past their next due time.
+    Each action is notified at most once every 24 hours.
