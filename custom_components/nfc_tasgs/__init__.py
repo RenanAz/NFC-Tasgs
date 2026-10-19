@@ -346,6 +346,12 @@ async def _log_action(
     _record_scan(entry_data["history"], action_key, person, scanner_device_id)
     await _save_history(hass)
     _refresh_entities(hass, entry_data)
+
+    if action_config.get(CONF_ACTION_PURCHASE):
+        await _add_shopping_item(hass, entry_data, action_config)
+    if action_config.get(CONF_ACTION_TASK):
+        await _complete_task(hass, entry_data, action_config)
+
     _fire_event(
         hass,
         config,
@@ -355,6 +361,80 @@ async def _log_action(
         person,
         scanner_device_id,
     )
+
+
+def _action_item_summary(entry_data: dict, action_config: dict) -> str:
+    label = action_config.get(CONF_ACTION_LABEL, action_config[CONF_ACTION_KEY])
+    return f"{label} ({entry_data['config'].get(CONF_NAME)})"
+
+
+async def _get_todo_items(hass: HomeAssistant, entity_id: str) -> list[dict]:
+    response = await hass.services.async_call(
+        "todo",
+        "get_items",
+        {"entity_id": entity_id},
+        blocking=True,
+        return_response=True,
+    )
+    return (response.get(entity_id) or {}).get("items", [])
+
+
+async def _add_shopping_item(
+    hass: HomeAssistant, entry_data: dict, action_config: dict
+) -> None:
+    entity_id = entry_data["config"].get(CONF_SHOPPING_LIST)
+    if not entity_id:
+        return
+    summary = _action_item_summary(entry_data, action_config)
+    try:
+        items = await _get_todo_items(hass, entity_id)
+        if any(
+            item.get("summary") == summary and item.get("status") == "needs_action"
+            for item in items
+        ):
+            return
+        await hass.services.async_call(
+            "todo",
+            "add_item",
+            {"entity_id": entity_id, "item": summary},
+            blocking=True,
+        )
+    except HomeAssistantError as err:
+        _LOGGER.warning("Could not add shopping item '%s': %s", summary, err)
+
+
+async def _complete_task(
+    hass: HomeAssistant, entry_data: dict, action_config: dict
+) -> None:
+    entity_id = entry_data["config"].get(CONF_TASK_LIST)
+    if not entity_id:
+        return
+    summary = _action_item_summary(entry_data, action_config)
+    try:
+        items = await _get_todo_items(hass, entity_id)
+        match = next(
+            (
+                item
+                for item in items
+                if item.get("summary") == summary
+                and item.get("status") == "needs_action"
+            ),
+            None,
+        )
+        if match is None:
+            return
+        await hass.services.async_call(
+            "todo",
+            "update_item",
+            {
+                "entity_id": entity_id,
+                "item": match.get("uid") or summary,
+                "status": "completed",
+            },
+            blocking=True,
+        )
+    except HomeAssistantError as err:
+        _LOGGER.warning("Could not complete task '%s': %s", summary, err)
 
 
 async def _process_scan(
@@ -472,6 +552,20 @@ def parse_menu_action(raw_action: str) -> tuple[str, str] | None:
     return token, action_key
 
 
+def _notify_service_candidates(hass: HomeAssistant, entity_entry: Any) -> list[str]:
+    """Candidate legacy notify service names for a notify entity."""
+    candidates = [f"mobile_app_{entity_entry.entity_id.split('.', 1)[1]}"]
+    for name in (entity_entry.name, entity_entry.original_name):
+        if name:
+            candidates.append(f"mobile_app_{_slugify(name)}")
+    device = dr.async_get(hass).async_get(entity_entry.device_id)
+    if device is not None:
+        for name in (device.name, device.name_by_user):
+            if name:
+                candidates.append(f"mobile_app_{_slugify(name)}")
+    return candidates
+
+
 def _resolve_notify_service(
     hass: HomeAssistant, entry_data: dict, scanner_device_id: str
 ) -> str | None:
@@ -481,23 +575,40 @@ def _resolve_notify_service(
     if configured and configured in notify_services:
         return configured
     if not scanner_device_id:
-        return configured or None
+        return None
 
     ent_reg = async_get_entity_registry(hass)
-    candidates: list[str] = []
     for entity_entry in ent_reg.entities.get_entries_for_device_id(scanner_device_id):
         if entity_entry.domain != "notify":
             continue
-        object_id = entity_entry.entity_id.split(".", 1)[1]
-        candidates.append(f"mobile_app_{object_id}")
-        for name in (entity_entry.name, entity_entry.original_name):
-            if name:
-                candidates.append(f"mobile_app_{_slugify(name)}")
+        for candidate in _notify_service_candidates(hass, entity_entry):
+            if candidate in notify_services:
+                return candidate
+    return None
 
-    for candidate in candidates:
-        if candidate in notify_services:
-            return candidate
-    return configured or None
+
+def _resolve_person_notify_service(
+    hass: HomeAssistant, person_entity_id: str
+) -> str | None:
+    """Resolve a person's phone to a legacy notify service."""
+    state = hass.states.get(person_entity_id)
+    if state is None:
+        return None
+    notify_services = hass.services.async_services().get("notify", {})
+    ent_reg = async_get_entity_registry(hass)
+    for tracker_id in state.attributes.get("device_trackers") or []:
+        tracker_entry = ent_reg.async_get(tracker_id)
+        if tracker_entry is None or tracker_entry.device_id is None:
+            continue
+        for entity_entry in ent_reg.entities.get_entries_for_device_id(
+            tracker_entry.device_id
+        ):
+            if entity_entry.domain != "notify":
+                continue
+            for candidate in _notify_service_candidates(hass, entity_entry):
+                if candidate in notify_services:
+                    return candidate
+    return None
 
 
 async def _send_action_menu(
@@ -706,6 +817,16 @@ async def _async_check_overdue(
     for entry_data in list(hass.data[DOMAIN].get("entries", {}).values()):
         config = entry_data["config"]
         service = _resolve_notify_service(hass, entry_data, "")
+        if not service:
+            for person_entity_id in [
+                config.get(CONF_ASSIGNEE),
+                *(config.get(CONF_OWNERS) or []),
+            ]:
+                if not person_entity_id:
+                    continue
+                service = _resolve_person_notify_service(hass, person_entity_id)
+                if service:
+                    break
         if not service:
             continue
         for action in config[CONF_ACTIONS]:

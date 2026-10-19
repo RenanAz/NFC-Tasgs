@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Overdue reminders: an hourly check sends a notification for each overdue
   action (at most once per 24 h) and fires `nfc_tasgs_overdue`. Also exposed as
   the `nfc_tasgs.check_overdue` service for manual runs.
+- Shopping-list hook: actions with `triggers_purchase` add a deduplicated item
+  to the device's shopping list.
+- Task-list hook: actions with `triggers_task` complete a matching open item in
+  the device's task list.
+- Overdue notifications fall back to the assignee's or owners' phone when the
+  device has no explicit notify service.
 - Structured action editor in the config and options flows: add, edit, and
   remove actions with key, label, expected interval, and purchase/task flags.
 - Device options now use Home Assistant selectors: owners/assignee (person),
