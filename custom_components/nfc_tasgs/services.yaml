@@ -1,6 +1,9 @@
 scan:
   name: "Scan NFC Tasg"
-  description: "Process a tag scan for a tracked device."
+  description: >-
+    Process a tag scan. Without an action, a single scan logs the default
+    action after the double-scan window; a second scan within the window
+    sends an action menu to the scanning device.
   fields:
     tag_id:
       name: "Tag ID"
@@ -18,7 +21,10 @@ scan:
         text: {}
     action:
       name: "Action"
-      description: "Action key. If omitted, uses the device default action."
+      description: >-
+        Action key. When set, the action is logged immediately (this is what
+        the notification menu uses). When omitted, the double-scan window
+        applies and the default action is logged.
       required: false
       example: "beans_refilled"
       selector:

@@ -12,8 +12,9 @@
                     "area_id": "Area",
                     "owners": "Owners",
                     "assignee": "Assignee",
+                    "auto_scan": "Handle tag scans automatically",
                     "double_scan_window_seconds": "Double scan window (seconds)",
-                    "notify_entity": "Notification target",
+                    "notify_service": "Notification service (for action menus)",
                     "task_list": "Task list",
                     "shopping_list": "Shopping list"
                 }
@@ -88,8 +89,9 @@
                     "area_id": "Area",
                     "owners": "Owners",
                     "assignee": "Assignee",
+                    "auto_scan": "Handle tag scans automatically",
                     "double_scan_window_seconds": "Double scan window (seconds)",
-                    "notify_entity": "Notification target",
+                    "notify_service": "Notification service (for action menus)",
                     "task_list": "Task list",
                     "shopping_list": "Shopping list"
                 }

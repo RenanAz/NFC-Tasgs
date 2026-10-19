@@ -10,7 +10,8 @@ CONF_ASSIGNEE = "assignee"
 CONF_DOUBLE_SCAN_WINDOW = "double_scan_window_seconds"
 CONF_TASK_LIST = "task_list"
 CONF_SHOPPING_LIST = "shopping_list"
-CONF_NOTIFY_ENTITY = "notify_entity"
+CONF_NOTIFY_SERVICE = "notify_service"
+CONF_AUTO_SCAN = "auto_scan"
 CONF_ICON = "icon"
 CONF_AREA_ID = "area_id"
 
@@ -33,6 +34,10 @@ ATTR_ACTION_SCAN_COUNT = "action_scan_count"
 ATTR_INTERVAL_HOURS = "interval_hours"
 
 EVENT_ACTION = f"{DOMAIN}_action"
+EVENT_NOTIFICATION_ACTION = "mobile_app_notification_action"
+
+MENU_ACTION_PREFIX = f"{DOMAIN}_menu|"
+MENU_TTL_SECONDS = 300
 
 SERVICE_SCAN = "scan"
 SERVICE_LOG = "log"

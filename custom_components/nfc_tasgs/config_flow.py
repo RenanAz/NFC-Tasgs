@@ -25,10 +25,11 @@ from .const import (
     CONF_ACTIONS,
     CONF_AREA_ID,
     CONF_ASSIGNEE,
+    CONF_AUTO_SCAN,
     CONF_DEFAULT_ACTION,
     CONF_DOUBLE_SCAN_WINDOW,
     CONF_ICON,
-    CONF_NOTIFY_ENTITY,
+    CONF_NOTIFY_SERVICE,
     CONF_OWNERS,
     CONF_SHOPPING_LIST,
     CONF_TAG_ID,
@@ -77,6 +78,15 @@ class _ActionsEditorMixin:
                 step_id="user", data_schema=self._device_schema(), errors=errors
             )
         return self.async_show_form(step_id="user", data_schema=self._device_schema())
+
+    def _notify_service_options(self) -> list[str]:
+        """List legacy notify services usable for actionable notifications."""
+        services = self.hass.services.async_services().get("notify", {})
+        return sorted(
+            name
+            for name in services
+            if name not in ("send_message", "persistent_notification")
+        )
 
     def _validate_device(self) -> dict[str, str]:
         if not self._include_identity:
@@ -139,6 +149,9 @@ class _ActionsEditorMixin:
             )
         )
         fields[
+            vol.Optional(CONF_AUTO_SCAN, default=current.get(CONF_AUTO_SCAN, True))
+        ] = selector({"boolean": {}})
+        fields[
             vol.Optional(
                 CONF_DOUBLE_SCAN_WINDOW,
                 default=current.get(
@@ -158,9 +171,16 @@ class _ActionsEditorMixin:
         )
         fields.update(
             self._optional_field(
-                CONF_NOTIFY_ENTITY,
-                selector({"entity": {"domain": "notify"}}),
-                current.get(CONF_NOTIFY_ENTITY),
+                CONF_NOTIFY_SERVICE,
+                selector(
+                    {
+                        "select": {
+                            "options": self._notify_service_options(),
+                            "custom_value": True,
+                        }
+                    }
+                ),
+                current.get(CONF_NOTIFY_SERVICE),
             )
         )
         fields.update(
@@ -186,7 +206,7 @@ class _ActionsEditorMixin:
             CONF_TAG_ID,
             CONF_AREA_ID,
             CONF_ASSIGNEE,
-            CONF_NOTIFY_ENTITY,
+            CONF_NOTIFY_SERVICE,
             CONF_TASK_LIST,
             CONF_SHOPPING_LIST,
             CONF_ICON,

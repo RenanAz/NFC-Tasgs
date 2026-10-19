@@ -4,16 +4,19 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
+from functools import partial
 from typing import Any
+from uuid import uuid4
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_NAME
-from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.core import HomeAssistant, ServiceCall, callback
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.typing import ConfigType
 
@@ -37,10 +40,11 @@ from .const import (
     CONF_ACTIONS,
     CONF_AREA_ID,
     CONF_ASSIGNEE,
+    CONF_AUTO_SCAN,
     CONF_DEFAULT_ACTION,
     CONF_DOUBLE_SCAN_WINDOW,
     CONF_ICON,
-    CONF_NOTIFY_ENTITY,
+    CONF_NOTIFY_SERVICE,
     CONF_OWNERS,
     CONF_SHOPPING_LIST,
     CONF_TAG_ID,
@@ -48,6 +52,9 @@ from .const import (
     DEFAULT_DOUBLE_SCAN_WINDOW,
     DOMAIN,
     EVENT_ACTION,
+    EVENT_NOTIFICATION_ACTION,
+    MENU_ACTION_PREFIX,
+    MENU_TTL_SECONDS,
     PLATFORMS,
     SERVICE_LOG,
     SERVICE_RESET_ACTION,
@@ -106,6 +113,8 @@ def _compute_next_due(
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.data.setdefault(DOMAIN, {})
+    hass.data[DOMAIN].setdefault("pending", {})
+    hass.data[DOMAIN].setdefault("menus", {})
     return True
 
 
@@ -119,6 +128,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN]["store"] = store
     if "entries" not in hass.data[DOMAIN]:
         hass.data[DOMAIN]["entries"] = {}
+    hass.data[DOMAIN].setdefault("pending", {})
+    hass.data[DOMAIN].setdefault("menus", {})
 
     config = _build_config(entry)
     dev_slug = _slugify(entry.data.get(CONF_NAME, entry.entry_id))
@@ -194,11 +205,12 @@ def _build_config(entry: ConfigEntry) -> dict[str, Any]:
         a.setdefault(CONF_ACTION_TASK, False)
     data[CONF_ACTIONS] = actions
     data.setdefault(CONF_DOUBLE_SCAN_WINDOW, DEFAULT_DOUBLE_SCAN_WINDOW)
+    data.setdefault(CONF_AUTO_SCAN, True)
     data.setdefault(CONF_OWNERS, [])
     data.setdefault(CONF_ASSIGNEE, None)
     data.setdefault(CONF_TASK_LIST, None)
     data.setdefault(CONF_SHOPPING_LIST, None)
-    data.setdefault(CONF_NOTIFY_ENTITY, None)
+    data.setdefault(CONF_NOTIFY_SERVICE, None)
     data.setdefault(CONF_ICON, "mdi:clipboard-check")
     data.setdefault(CONF_AREA_ID, None)
     return data
@@ -292,38 +304,37 @@ def _resolve_person(hass: HomeAssistant, scanner_device_id: str) -> tuple[str, s
     return "Unknown", scanner_device_id
 
 
-async def _handle_scan(hass: HomeAssistant, call: ServiceCall) -> None:
-    tag_id = call.data["tag_id"]
-    scanner_device_id = call.data["scanner_device_id"]
-    action_key = call.data.get("action")
+def _find_entry_by_tag(hass: HomeAssistant, tag_id: str) -> dict | None:
+    """Return the entry data for a tag, if configured."""
+    for entry_data in hass.data[DOMAIN].get("entries", {}).values():
+        if entry_data["config"].get(CONF_TAG_ID) == tag_id:
+            return entry_data
+    return None
 
-    entry_data = None
-    for ed in hass.data[DOMAIN]["entries"].values():
-        if ed["config"].get(CONF_TAG_ID) == tag_id:
-            entry_data = ed
-            break
-    if entry_data is None:
-        raise ServiceValidationError(f"No device found for tag {tag_id}")
 
+async def _log_action(
+    hass: HomeAssistant,
+    entry_data: dict,
+    action_key: str,
+    person: str,
+    scanner_device_id: str,
+) -> None:
+    """Record an action and refresh its entities."""
     config = entry_data["config"]
-    history = entry_data["history"]
-
-    if not action_key:
-        action_key = config[CONF_DEFAULT_ACTION]
-
-    action_config = None
-    for a in config[CONF_ACTIONS]:
-        if a[CONF_ACTION_KEY] == action_key:
-            action_config = a
-            break
+    action_config = next(
+        (
+            action
+            for action in config[CONF_ACTIONS]
+            if action[CONF_ACTION_KEY] == action_key
+        ),
+        None,
+    )
     if action_config is None:
         raise ServiceValidationError(
             f"Unknown action '{action_key}' for device '{config[CONF_NAME]}'"
         )
 
-    person_name, _ = _resolve_person(hass, scanner_device_id)
-
-    _record_scan(history, action_key, person_name, scanner_device_id)
+    _record_scan(entry_data["history"], action_key, person, scanner_device_id)
     await _save_history(hass)
     _refresh_entities(hass, entry_data)
     _fire_event(
@@ -332,8 +343,237 @@ async def _handle_scan(hass: HomeAssistant, call: ServiceCall) -> None:
         entry_data,
         action_key,
         action_config,
-        person_name,
+        person,
         scanner_device_id,
+    )
+
+
+async def _process_scan(
+    hass: HomeAssistant,
+    tag_id: str,
+    scanner_device_id: str,
+    action_key: str | None = None,
+) -> None:
+    """Resolve a scanned tag and either log or open the action menu."""
+    entry_data = _find_entry_by_tag(hass, tag_id)
+    if entry_data is None:
+        raise ServiceValidationError(f"No device found for tag {tag_id}")
+
+    person_name, _ = _resolve_person(hass, scanner_device_id)
+
+    if action_key:
+        await _log_action(hass, entry_data, action_key, person_name, scanner_device_id)
+        return
+
+    await _start_scan_window(hass, entry_data, tag_id, scanner_device_id, person_name)
+
+
+async def _handle_scan(hass: HomeAssistant, call: ServiceCall) -> None:
+    await _process_scan(
+        hass,
+        call.data["tag_id"],
+        call.data["scanner_device_id"],
+        call.data.get("action"),
+    )
+
+
+@callback
+def _handle_tag_scanned(hass: HomeAssistant, event: Any) -> None:
+    """Handle the companion app's tag_scanned event automatically."""
+    tag_id = event.data.get("tag_id")
+    if not tag_id:
+        return
+    entry_data = _find_entry_by_tag(hass, tag_id)
+    if entry_data is None or not entry_data["config"].get(CONF_AUTO_SCAN, True):
+        return
+    hass.async_create_task(
+        _process_scan(
+            hass,
+            tag_id,
+            event.data.get("device_id", ""),
+            None,
+        )
+    )
+
+
+async def _start_scan_window(
+    hass: HomeAssistant,
+    entry_data: dict,
+    tag_id: str,
+    scanner_device_id: str,
+    person_name: str,
+) -> None:
+    """Log on a single scan, or open the action menu on a double scan."""
+    pending = hass.data[DOMAIN]["pending"].pop(tag_id, None)
+    if pending is not None:
+        pending["cancel"]()
+        await _send_action_menu(hass, entry_data, scanner_device_id, person_name)
+        return
+
+    entry_id = entry_data["entry_id"]
+    window = entry_data["config"].get(
+        CONF_DOUBLE_SCAN_WINDOW, DEFAULT_DOUBLE_SCAN_WINDOW
+    )
+
+    @callback
+    def _commit(_now: datetime) -> None:
+        hass.data[DOMAIN]["pending"].pop(tag_id, None)
+        current = hass.data[DOMAIN]["entries"].get(entry_id)
+        if current is None:
+            return
+        hass.async_create_task(
+            _log_action(
+                hass,
+                current,
+                current["config"][CONF_DEFAULT_ACTION],
+                person_name,
+                scanner_device_id,
+            )
+        )
+
+    cancel = async_call_later(hass, window, _commit)
+    hass.data[DOMAIN]["pending"][tag_id] = {
+        "entry_id": entry_id,
+        "scanner_device_id": scanner_device_id,
+        "person": person_name,
+        "cancel": cancel,
+    }
+
+
+def build_menu_actions(
+    token: str, actions: list[dict[str, Any]]
+) -> list[dict[str, str]]:
+    """Build actionable notification buttons for an action menu."""
+    return [
+        {
+            "action": f"{MENU_ACTION_PREFIX}{token}|{action[CONF_ACTION_KEY]}",
+            "title": action.get(CONF_ACTION_LABEL, action[CONF_ACTION_KEY]),
+        }
+        for action in actions
+    ]
+
+
+def parse_menu_action(raw_action: str) -> tuple[str, str] | None:
+    """Return (token, action_key) for one of our notification buttons."""
+    if not raw_action.startswith(MENU_ACTION_PREFIX):
+        return None
+    token, separator, action_key = raw_action[len(MENU_ACTION_PREFIX) :].partition("|")
+    if not token or not separator or not action_key:
+        return None
+    return token, action_key
+
+
+def _resolve_notify_service(
+    hass: HomeAssistant, entry_data: dict, scanner_device_id: str
+) -> str | None:
+    """Return a legacy notify service that supports actionable buttons."""
+    notify_services = hass.services.async_services().get("notify", {})
+    configured = entry_data["config"].get(CONF_NOTIFY_SERVICE)
+    if configured and configured in notify_services:
+        return configured
+    if not scanner_device_id:
+        return configured or None
+
+    ent_reg = async_get_entity_registry(hass)
+    candidates: list[str] = []
+    for entity_entry in ent_reg.entities.get_entries_for_device_id(scanner_device_id):
+        if entity_entry.domain != "notify":
+            continue
+        object_id = entity_entry.entity_id.split(".", 1)[1]
+        candidates.append(f"mobile_app_{object_id}")
+        for name in (entity_entry.name, entity_entry.original_name):
+            if name:
+                candidates.append(f"mobile_app_{_slugify(name)}")
+
+    for candidate in candidates:
+        if candidate in notify_services:
+            return candidate
+    return configured or None
+
+
+async def _send_action_menu(
+    hass: HomeAssistant,
+    entry_data: dict,
+    scanner_device_id: str,
+    person_name: str,
+) -> None:
+    """Send the actionable notification for a double scan."""
+    config = entry_data["config"]
+    service = _resolve_notify_service(hass, entry_data, scanner_device_id)
+    if service is None:
+        _LOGGER.debug(
+            "No notify service for scanner %s; logging default action instead",
+            scanner_device_id,
+        )
+        await _log_action(
+            hass,
+            entry_data,
+            config[CONF_DEFAULT_ACTION],
+            person_name,
+            scanner_device_id,
+        )
+        return
+
+    token = uuid4().hex
+    hass.data[DOMAIN]["menus"][token] = {
+        "entry_id": entry_data["entry_id"],
+        "scanner_device_id": scanner_device_id,
+        "person": person_name,
+    }
+
+    @callback
+    def _expire(_now: datetime) -> None:
+        hass.data[DOMAIN]["menus"].pop(token, None)
+
+    async_call_later(hass, MENU_TTL_SECONDS, _expire)
+
+    try:
+        await hass.services.async_call(
+            "notify",
+            service,
+            {
+                "message": "What did you do?",
+                "title": config.get(CONF_NAME),
+                "data": {
+                    "actions": build_menu_actions(token, config[CONF_ACTIONS]),
+                    "tag": f"{DOMAIN}_{token}",
+                },
+            },
+            blocking=True,
+        )
+    except HomeAssistantError as err:
+        _LOGGER.warning("Could not send NFC Tasgs action menu: %s", err)
+        hass.data[DOMAIN]["menus"].pop(token, None)
+        await _log_action(
+            hass,
+            entry_data,
+            config[CONF_DEFAULT_ACTION],
+            person_name,
+            scanner_device_id,
+        )
+
+
+@callback
+def _handle_notification_action(hass: HomeAssistant, event: Any) -> None:
+    """Log the action chosen in a double-scan notification."""
+    parsed = parse_menu_action(event.data.get("action", ""))
+    if parsed is None:
+        return
+    token, action_key = parsed
+    menu = hass.data[DOMAIN].get("menus", {}).pop(token, None)
+    if menu is None:
+        return
+    entry_data = hass.data[DOMAIN]["entries"].get(menu["entry_id"])
+    if entry_data is None:
+        return
+    hass.async_create_task(
+        _log_action(
+            hass,
+            entry_data,
+            action_key,
+            menu["person"],
+            menu["scanner_device_id"],
+        )
     )
 
 
@@ -342,26 +582,13 @@ async def _handle_log(hass: HomeAssistant, call: ServiceCall) -> None:
     if not entry_data:
         raise ServiceValidationError("No device targeted")
 
-    action_key = call.data["action_key"]
-    scanner = call.data.get("scanner", "Manual")
-
-    config = entry_data["config"]
-    history = entry_data["history"]
-
-    action_config = None
-    for a in config[CONF_ACTIONS]:
-        if a[CONF_ACTION_KEY] == action_key:
-            action_config = a
-            break
-    if action_config is None:
-        raise ServiceValidationError(
-            f"Unknown action '{action_key}' for device '{config[CONF_NAME]}'"
-        )
-
-    _record_scan(history, action_key, scanner, "")
-    await _save_history(hass)
-    _refresh_entities(hass, entry_data)
-    _fire_event(hass, config, entry_data, action_key, action_config, scanner, "")
+    await _log_action(
+        hass,
+        entry_data,
+        call.data["action_key"],
+        call.data.get("scanner", "Manual"),
+        "",
+    )
 
 
 async def _handle_reset(hass: HomeAssistant, call: ServiceCall) -> None:
@@ -476,3 +703,14 @@ def _register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(DOMAIN, SERVICE_LOG, log_service)
     hass.services.async_register(DOMAIN, SERVICE_RESET_ACTION, reset_service)
     hass.services.async_register(DOMAIN, SERVICE_SET_ASSIGNEE, assignee_service)
+
+    if not hass.data[DOMAIN].get("event_listener_registered"):
+        hass.bus.async_listen(
+            EVENT_NOTIFICATION_ACTION,
+            partial(_handle_notification_action, hass),
+        )
+        hass.bus.async_listen(
+            "tag_scanned",
+            partial(_handle_tag_scanned, hass),
+        )
+        hass.data[DOMAIN]["event_listener_registered"] = True

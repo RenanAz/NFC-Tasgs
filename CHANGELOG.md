@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Automatic `tag_scanned` handling: the integration resolves its own tags and
+  starts the scan flow directly. Can be disabled per device with `auto_scan`.
+- Double-scan detection in the integration (`double_scan_window_seconds`):
+  a single scan logs the default action after the window; a second scan sends
+  an actionable notification menu to the scanning phone.
+- `notify_service` option (e.g. `mobile_app_your_phone`) for the action menu;
+  it is auto-resolved from the scanner's device when possible.
 - Structured action editor in the config and options flows: add, edit, and
   remove actions with key, label, expected interval, and purchase/task flags.
 - Device options now use Home Assistant selectors: owners/assignee (person),
@@ -19,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HACS validation is deferred until the integration is ready for publication.
 - Developer tooling: ruff, pre-commit, and `pytest-homeassistant-custom-component`.
 - Tests covering the integration manifest contract.
+
+### Removed
+
+- The tag-scan blueprint and its external helper dependency (`input_text`/`timer`).
+- `notify_entity` option (replaced by `notify_service`).
 
 ### Fixed
 
