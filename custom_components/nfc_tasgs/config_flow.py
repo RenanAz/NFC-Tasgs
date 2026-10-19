@@ -88,6 +88,18 @@ class _ActionsEditorMixin:
             errors[CONF_TAG_ID] = "required"
         return errors
 
+    def _optional_field(
+        self, key: str, schema: Any, value: Any = None, **kwargs: Any
+    ) -> dict[Any, Any]:
+        """Build an optional field, showing the current value when set.
+
+        Entity/area selectors reject empty-string defaults, so current values
+        are passed as `suggested_value` instead of `default`.
+        """
+        if value not in (None, "", [], {}):
+            kwargs["description"] = {"suggested_value": value}
+        return {vol.Optional(key, **kwargs): schema}
+
     def _device_schema(self) -> vol.Schema:
         current = self._device
         fields: dict[Any, Any] = {}
@@ -98,18 +110,34 @@ class _ActionsEditorMixin:
             fields[vol.Required(CONF_TAG_ID, default=current.get(CONF_TAG_ID, ""))] = (
                 selector({"text": {}})
             )
-        fields[
-            vol.Optional(CONF_ICON, default=current.get(CONF_ICON) or DEFAULT_ICON)
-        ] = selector({"icon": {}})
-        fields[vol.Optional(CONF_AREA_ID, default=current.get(CONF_AREA_ID) or "")] = (
-            selector({"area": {}})
+        fields.update(
+            self._optional_field(
+                CONF_ICON,
+                selector({"icon": {}}),
+                current.get(CONF_ICON) or DEFAULT_ICON,
+                default=current.get(CONF_ICON) or DEFAULT_ICON,
+            )
         )
-        fields[vol.Optional(CONF_OWNERS, default=current.get(CONF_OWNERS) or [])] = (
-            selector({"entity": {"domain": "person", "multiple": True}})
+        fields.update(
+            self._optional_field(
+                CONF_AREA_ID, selector({"area": {}}), current.get(CONF_AREA_ID)
+            )
         )
-        fields[
-            vol.Optional(CONF_ASSIGNEE, default=current.get(CONF_ASSIGNEE) or "")
-        ] = selector({"entity": {"domain": "person"}})
+        fields.update(
+            self._optional_field(
+                CONF_OWNERS,
+                selector({"entity": {"domain": "person", "multiple": True}}),
+                current.get(CONF_OWNERS),
+                default=current.get(CONF_OWNERS) or [],
+            )
+        )
+        fields.update(
+            self._optional_field(
+                CONF_ASSIGNEE,
+                selector({"entity": {"domain": "person"}}),
+                current.get(CONF_ASSIGNEE),
+            )
+        )
         fields[
             vol.Optional(
                 CONF_DOUBLE_SCAN_WINDOW,
@@ -128,19 +156,27 @@ class _ActionsEditorMixin:
                 }
             }
         )
-        fields[
-            vol.Optional(
-                CONF_NOTIFY_ENTITY, default=current.get(CONF_NOTIFY_ENTITY) or ""
+        fields.update(
+            self._optional_field(
+                CONF_NOTIFY_ENTITY,
+                selector({"entity": {"domain": "notify"}}),
+                current.get(CONF_NOTIFY_ENTITY),
             )
-        ] = selector({"entity": {"domain": "notify"}})
-        fields[
-            vol.Optional(CONF_TASK_LIST, default=current.get(CONF_TASK_LIST) or "")
-        ] = selector({"entity": {"domain": "todo"}})
-        fields[
-            vol.Optional(
-                CONF_SHOPPING_LIST, default=current.get(CONF_SHOPPING_LIST) or ""
+        )
+        fields.update(
+            self._optional_field(
+                CONF_TASK_LIST,
+                selector({"entity": {"domain": "todo"}}),
+                current.get(CONF_TASK_LIST),
             )
-        ] = selector({"entity": {"domain": "todo"}})
+        )
+        fields.update(
+            self._optional_field(
+                CONF_SHOPPING_LIST,
+                selector({"entity": {"domain": "todo"}}),
+                current.get(CONF_SHOPPING_LIST),
+            )
+        )
         return vol.Schema(fields)
 
     def _normalize_device(self, user_input: dict[str, Any]) -> dict[str, Any]:
@@ -178,18 +214,18 @@ class _ActionsEditorMixin:
 
     def _action_schema(self, defaults: dict[str, Any] | None = None) -> vol.Schema:
         current = defaults or {}
-        return vol.Schema(
-            {
-                vol.Required(
-                    CONF_ACTION_KEY, default=current.get(CONF_ACTION_KEY, "")
-                ): selector({"text": {}}),
-                vol.Required(
-                    CONF_ACTION_LABEL, default=current.get(CONF_ACTION_LABEL, "")
-                ): selector({"text": {}}),
-                vol.Optional(
-                    CONF_ACTION_INTERVAL,
-                    default=current.get(CONF_ACTION_INTERVAL),
-                ): selector(
+        fields: dict[Any, Any] = {
+            vol.Required(
+                CONF_ACTION_KEY, default=current.get(CONF_ACTION_KEY, "")
+            ): selector({"text": {}}),
+            vol.Required(
+                CONF_ACTION_LABEL, default=current.get(CONF_ACTION_LABEL, "")
+            ): selector({"text": {}}),
+        }
+        fields.update(
+            self._optional_field(
+                CONF_ACTION_INTERVAL,
+                selector(
                     {
                         "number": {
                             "min": 0,
@@ -199,15 +235,18 @@ class _ActionsEditorMixin:
                         }
                     }
                 ),
-                vol.Optional(
-                    CONF_ACTION_PURCHASE,
-                    default=current.get(CONF_ACTION_PURCHASE, False),
-                ): bool,
-                vol.Optional(
-                    CONF_ACTION_TASK, default=current.get(CONF_ACTION_TASK, False)
-                ): bool,
-            }
+                current.get(CONF_ACTION_INTERVAL),
+            )
         )
+        fields[
+            vol.Optional(
+                CONF_ACTION_PURCHASE, default=current.get(CONF_ACTION_PURCHASE, False)
+            )
+        ] = bool
+        fields[
+            vol.Optional(CONF_ACTION_TASK, default=current.get(CONF_ACTION_TASK, False))
+        ] = bool
+        return vol.Schema(fields)
 
     def _normalize_action(self, user_input: dict[str, Any]) -> dict[str, Any]:
         interval = _clean(user_input.get(CONF_ACTION_INTERVAL))
