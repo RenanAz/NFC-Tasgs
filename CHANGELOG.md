@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-10-20
+
+### Fixed
+
+- Selecting an area no longer creates a duplicate area named after the area
+  ID. The config flow stores an area ID, but the device registry's
+  `suggested_area` argument expects a name, so Home Assistant created a new
+  area with the ID as its name. The device is now assigned to the existing
+  area explicitly.
+
 ## [0.2.0] - 2026-10-20
 
 First public release. It consolidates the initial implementation and the
@@ -99,4 +109,4 @@ features developed since then.
 
 ## [0.1.0] - 2026-10-20
 
-Initial public release; superseded by 0.2.0.
+Initial public release; superseded by 0.2.1.
