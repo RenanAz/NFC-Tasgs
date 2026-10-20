@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -11,22 +10,20 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_NAME, UnitOfTime
+from homeassistant.const import UnitOfTime
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 
-from . import SIGNAL_UPDATE
+from . import _action_due, _compute_interval, _defer_attributes, signal_update
 from .const import (
     ACTION_SENSORS,
-    CONF_ACTION_INTERVAL,
     CONF_ACTION_KEY,
     CONF_ACTION_LABEL,
     CONF_ACTIONS,
     DOMAIN,
 )
-from . import _compute_interval, _compute_next_due, _slugify
 
 
 async def async_setup_entry(
@@ -39,15 +36,9 @@ async def async_setup_entry(
     slug = entry_data["slug"]
     entities: list[SensorEntity] = []
 
-    entities.append(
-        NfcTasgsDeviceSensor(entry_data, "total_scans", slug, config, None)
-    )
-    entities.append(
-        NfcTasgsDeviceSensor(entry_data, "last_scan", slug, config, None)
-    )
-    entities.append(
-        NfcTasgsDeviceSensor(entry_data, "last_action", slug, config, None)
-    )
+    entities.append(NfcTasgsDeviceSensor(entry_data, "total_scans", slug, config, None))
+    entities.append(NfcTasgsDeviceSensor(entry_data, "last_scan", slug, config, None))
+    entities.append(NfcTasgsDeviceSensor(entry_data, "last_action", slug, config, None))
     entities.append(
         NfcTasgsDeviceSensor(entry_data, "last_scanner", slug, config, None)
     )
@@ -56,9 +47,7 @@ async def async_setup_entry(
         action_key = action[CONF_ACTION_KEY]
         for sensor_type in ACTION_SENSORS:
             entities.append(
-                NfcTasgsActionSensor(
-                    entry_data, sensor_type, slug, config, action_key
-                )
+                NfcTasgsActionSensor(entry_data, sensor_type, slug, config, action_key)
             )
 
     async_add_entities(entities)
@@ -75,7 +64,9 @@ class NfcTasgsBaseSensor(SensorEntity):
         await super().async_added_to_hass()
         self.async_on_remove(
             async_dispatcher_connect(
-                self.hass, SIGNAL_UPDATE, self._handle_update
+                self.hass,
+                signal_update(self._entry_data["entry_id"]),
+                self._handle_update,
             )
         )
 
@@ -94,9 +85,9 @@ class NfcTasgsDeviceSensor(NfcTasgsBaseSensor):
         self._slug = slug
         self._config = config
         self._action_key = action_key
-        self._attr_unique_id = f"{slug}_{sensor_type}"
+        self._attr_unique_id = f"{entry_data['entry_id']}_{sensor_type}"
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry_data.get("device_id", slug))},
+            "identifiers": {(DOMAIN, entry_data["entry_id"])},
         }
 
         if sensor_type == "total_scans":
@@ -119,9 +110,7 @@ class NfcTasgsDeviceSensor(NfcTasgsBaseSensor):
     def native_value(self) -> StateType:
         history = self._entry_data.get("history", {})
         if self._sensor_type == "total_scans":
-            return sum(
-                h.get("total_scans", 0) for h in history.values()
-            )
+            return sum(h.get("total_scans", 0) for h in history.values())
         if self._sensor_type == "last_scan":
             latest = 0.0
             for h in history.values():
@@ -130,7 +119,7 @@ class NfcTasgsDeviceSensor(NfcTasgsBaseSensor):
                     latest = ts
             if latest == 0.0:
                 return None
-            return datetime.fromtimestamp(latest, tz=timezone.utc).isoformat()
+            return datetime.fromtimestamp(latest, tz=UTC)
         if self._sensor_type == "last_action":
             latest_ts = 0.0
             latest_action = ""
@@ -169,9 +158,9 @@ class NfcTasgsActionSensor(NfcTasgsBaseSensor):
         self._slug = slug
         self._config = config
         self._action_key = action_key
-        self._attr_unique_id = f"{slug}_{action_key}_{sensor_type}"
+        self._attr_unique_id = f"{entry_data['entry_id']}_{action_key}_{sensor_type}"
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry_data.get("device_id", slug))},
+            "identifiers": {(DOMAIN, entry_data["entry_id"])},
         }
 
         action_label = action_key
@@ -211,7 +200,7 @@ class NfcTasgsActionSensor(NfcTasgsBaseSensor):
             ts = rec.get("last_scan_ts", 0)
             if not ts:
                 return None
-            return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+            return datetime.fromtimestamp(ts, tz=UTC)
 
         if self._sensor_type == "interval_hours":
             count = rec.get("total_scans", 0)
@@ -227,20 +216,18 @@ class NfcTasgsActionSensor(NfcTasgsBaseSensor):
             )
 
         if self._sensor_type == "next_due":
-            ts = rec.get("last_scan_ts", 0)
-            count = rec.get("total_scans", 0)
-            interval = _compute_interval(
-                rec.get("first_scan_ts", 0), ts, count
+            action = next(
+                (
+                    item
+                    for item in self._config.get(CONF_ACTIONS, [])
+                    if item[CONF_ACTION_KEY] == self._action_key
+                ),
+                {},
             )
-            seed = None
-            for a in self._config.get(CONF_ACTIONS, []):
-                if a[CONF_ACTION_KEY] == self._action_key:
-                    seed = a.get(CONF_ACTION_INTERVAL)
-                    break
-            due = _compute_next_due(ts, interval, seed)
+            due, _original = _action_due(rec, action)
             if due is None:
                 return None
-            return datetime.fromtimestamp(due, tz=timezone.utc).isoformat()
+            return datetime.fromtimestamp(due, tz=UTC)
 
         if self._sensor_type == "last_scanner":
             return rec.get("last_scanner") or None
@@ -249,3 +236,21 @@ class NfcTasgsActionSensor(NfcTasgsBaseSensor):
             return rec.get("total_scans", 0)
 
         return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str] | None:
+        if self._sensor_type != "next_due":
+            return None
+        history = self._entry_data.get("history", {})
+        rec = history.get(self._action_key, {})
+        action = next(
+            (
+                item
+                for item in self._config.get(CONF_ACTIONS, [])
+                if item[CONF_ACTION_KEY] == self._action_key
+            ),
+            {},
+        )
+        effective, original = _action_due(rec, action)
+        attrs = _defer_attributes(rec, effective, original)
+        return attrs or None

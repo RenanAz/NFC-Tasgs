@@ -1,540 +1,316 @@
-# NFC Tasgs — Specification
+# NFC Tasgs
 
-A Home Assistant custom integration that turns any physical object into a trackable "chore device" via NFC tags. Scan a tag to log maintenance actions, identify who performed them, derive per-action statistics (average interval, next due date, who does it most), and receive adaptive reminders when something is due.
+Turn any physical object into a tracked chore with an NFC tag. Scan a tag to
+log what you did, who did it, and when. NFC Tasgs learns each action's real
+rhythm and tells you when something is due again.
 
----
-
-## Architecture
-
-```
-┌──────────────────────────────────────────────────────────┐
-│                    CONFIG FLOW (UI)                       │
-│  Define devices: name, tag_id, actions[], owners[],       │
-│  assignee, default_action                                 │
-│                                                           │
-│  Per action: key, label, expected_interval_hours (seed),  │
-│  triggers_purchase, triggers_task                         │
-└──────────────────────┬───────────────────────────────────┘
-                       │ creates
-                       ▼
-┌──────────────────────────────────────────────────────────┐
-│                  PER-DEVICE ENTITIES                       │
-│  sensor.<device>_total_scans    (total_increasing, LTS)   │
-│  sensor.<device>_last_scan      (timestamp)               │
-│  sensor.<device>_last_action    (action label)            │
-│  sensor.<device>_last_scanner   (person name)             │
-│  button.<device>_log_manual     (logs default action)     │
-└──────────────────────┬───────────────────────────────────┘
-                       │
-┌──────────────────────▼───────────────────────────────────┐
-│               PER-ACTION ENTITIES (all actions)            │
-│  sensor.<device>_<action>_last_scan        (timestamp)    │
-│  sensor.<device>_<action>_interval         (hours, LTS)   │
-│  sensor.<device>_<action>_next_due         (datetime)     │
-│  sensor.<device>_<action>_last_scanner     (text)         │
-│  sensor.<device>_<action>_total_scans      (total_inc)    │
-│  binary_sensor.<device>_<action>_overdue   (on/off)       │
-└──────────────────────┬───────────────────────────────────┘
-                       │
-┌──────────────────────▼───────────────────────────────────┐
-│                    INTEGRATION SERVICES                   │
-│  nfc_tasgs.scan(tag_id, device_id, action?)                │
-│  nfc_tasgs.log(device_id, action_key, scanner)             │
-│  nfc_tasgs.reset_action(device_id, action_key)             │
-│  nfc_tasgs.set_assignee(device_id, person)                 │
-└──────────────────────┬───────────────────────────────────┘
-                       │
-┌──────────────────────▼───────────────────────────────────┐
-│                    AUTOMATION (Blueprint)                 │
-│  Triggers: tag_scanned event                             │
-│  Resolves: tag_id → device, device_id → person           │
-│  Single scan: calls nfc_tasgs.scan (default action)       │
-│  Double scan: sends actionable notification with menu     │
-│  Notification tap: calls nfc_tasgs.scan with chosen action │
-└──────────────────────────────────────────────────────────┘
-```
+A custom integration for Home Assistant (no YAML required).
 
 ---
 
-## Configuration
+## Features
 
-### Per-device fields
+- **One config entry per object.** Each object has a tag, a default action, and
+  any number of named actions (`cleaned`, `descaled`, `filter_replaced`, …).
+- **Single scan logs, double scan asks.** A single tap logs the default action
+  after a short window. Tapping twice within that window opens an actionable
+  notification with the object's action menu.
+- **Self-learning intervals.** The integration measures the real average time
+  between scans. A seed interval bootstraps the first reminder; after two scans
+  the measured average takes over and keeps improving.
+- **Overdue reminders.** An hourly check notifies you when an action is past
+  its next due time (at most once per 24 hours per action).
+- **Who did it.** The scanner's phone is resolved to the matching person via
+  the person's device trackers.
+- **Todo hooks.** Actions can add an item to a shopping list or complete a
+  matching item in a task list.
+- **Everything in the UI.** Devices and actions are edited with the config and
+  options flows; the integration listens to `tag_scanned` itself, so no
+  blueprint or helper is required.
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `name` | string | Yes | Display name (e.g. "Coffee Machine") |
-| `tag_id` | string | Yes | NFC tag UUID from HA's tag registry |
-| `default_action` | string | Yes | Action key logged on single scan |
-| `actions` | list[object] | Yes | List of action definitions (see below) |
-| `owners` | list[person_id] | No | People responsible for this device |
-| `assignee` | person_id | No | Currently assigned person |
-| `double_scan_window_seconds` | int | `3` | Time window to detect double-scan |
-| `task_list` | todo_entity_id | No | Todo list for scheduled tasks/reminders |
-| `shopping_list` | todo_entity_id | No | List for purchase-triggering actions |
-| `icon` | string | `mdi:clipboard-check` | MDI icon for dashboard |
-| `area_id` | string | No | HA area for the physical object |
+### Design docs
 
-### Per-action fields
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `key` | string | Yes | Internal key (slug, e.g. `beans_refilled`) |
-| `label` | string | Yes | Display label (e.g. "Beans Refilled") |
-| `expected_interval_hours` | float | No | Seed interval for reminders. If unset and ≤2 scans exist, the system self-learns from actual data. If unset and ≤1 scan, no interval computed, no overdue alerts. Once ≥3 scans of this action exist, the actual average overrides any seed. |
-| `triggers_purchase` | bool | `false` | Logging this action adds an item to `shopping_list` |
-| `triggers_task` | bool | `false` | Logging this action creates/completes a task in `task_list` |
-
-### Full config example
-
-```yaml
-devices:
-  - name: "Coffee Machine"
-    tag_id: "00000000-0000-0000-0000-000000000001"
-    default_action: "cleaned"
-    owners:
-      - person.jon_doe
-      - person.jane_doe
-    task_list: todo.home_chores
-    shopping_list: todo.home_chores
-    actions:
-      - key: "cleaned"
-        label: "Cleaned"
-        expected_interval_hours: 168
-      - key: "descaled"
-        label: "Descaled"
-        expected_interval_hours: 1440
-      - key: "beans_refilled"
-        label: "Beans Refilled"
-        expected_interval_hours: 120
-        triggers_purchase: true
-      - key: "filter_changed"
-        label: "Filter Changed"
-        expected_interval_hours: 2160
-        triggers_purchase: true
-
-  - name: "Cat 1 Litter Box"
-    tag_id: "00000000-0000-0000-0000-000000000002"
-    default_action: "cleaned"
-    owners:
-      - person.jon_doe
-      - person.jane_doe
-    actions:
-      - key: "cleaned"
-        label: "Cleaned"
-        expected_interval_hours: 48
-      - key: "deep_cleaned"
-        label: "Deep Cleaned"
-      - key: "litter_replaced"
-        label: "Litter Replaced"
-        triggers_purchase: true
-
-  - name: "Living Room Plants"
-    tag_id: "..."
-    default_action: "watered"
-    actions:
-      - key: "watered"
-        label: "Watered"
-        expected_interval_hours: 96
-      - key: "fertilized"
-        label: "Fertilized"
-        expected_interval_hours: 720
-        triggers_purchase: true
-      - key: "repotted"
-        label: "Repotted"
-      - key: "pruned"
-        label: "Pruned"
-```
+- [Appliance template catalog](docs/TEMPLATE-CATALOG.md) — the shipped presets,
+  action vocabulary, and community-template rules.
+- [Design decisions](docs/DESIGN-DECISIONS.md) — implemented decisions and the
+  deferred ideas log (editable intervals, defer/snooze, use cases, back-button
+  limitation, shopping/task maturity).
 
 ---
 
-## Self-learning interval system
+## Installation
 
-The core differentiator. Every action learns its actual rhythm from scan history.
+### HACS (custom repository)
 
-### Algorithm
+1. HACS → Integrations → Custom repositories.
+2. Add `https://github.com/RenanAz/NFC-Tasgs` as an **Integration**.
+3. Install **NFC Tasgs** and restart Home Assistant.
 
-```
-SCAN_COUNT < 2:
-  interval = unknown
-  next_due = unknown
-  overdue = off
+### Manual
 
-SCAN_COUNT == 2:
-  interval = (last_scan - first_scan)  # raw interval from 2 data points
-  next_due = last_scan + interval
-  overdue = expected_interval check if seed exists, else off
-  
-SCAN_COUNT >= 3:
-  interval = (last_scan_timestamp - first_scan_timestamp) / (scan_count - 1)  # running average
-  next_due = last_scan + interval
-  overdue = now > next_due
-```
+Copy `custom_components/nfc_tasgs/` into your Home Assistant `config/custom_components/`
+directory and restart.
 
-### Behavior
-
-- **No seed, no data**: sensors report `unknown`, no reminders fire
-- **Seed set, no data**: `overdue` fires based on `expected_interval_hours` (assume first scan happened at startup/creation time)
-- **Seed set, 1 scan**: same as above — seed acts as the expected interval until data proves otherwise
-- **≥2 scans**: seed is ignored. Actual computed interval drives everything. The system adapts.
-- **Rare actions** (descaled every 6 months): intervals become increasingly accurate over years of use
-
-### Why this matters
-
-A coffee machine might be configured with `expected_interval_hours: 168` for cleaning (once a week). But in reality, you clean it every 9.5 days because it doesn't get that dirty. The seed bootstraps the first reminder, then the system learns your actual pattern and stops nagging you at day 7.
+**Minimum Home Assistant version:** 2026.10.
 
 ---
 
-## Entities created
+## Getting started
 
-### Per-device entities (5)
+1. **Create the tags first.** In Home Assistant go to **Settings → Tags**, add a
+   tag, and write it to an NFC sticker/card with the companion app. Give each
+   tag a recognisable name (e.g. “Coffee machine”).
+2. **Add the integration.** **Settings → Devices & services → Add integration →
+   NFC Tasgs**.
+3. Fill in the device step:
+   - **Device name** — e.g. `Coffee Machine`.
+   - **Tag** — pick the tag created in step 1 from the dropdown (shown by its
+     name). If the list is empty, create the tag in **Settings → Tags** first.
+   - **Owners / assignee** — optional people used as notification fallbacks.
+   - **Notification service** — optional, e.g. `mobile_app_your_phone`. Needed
+     for the double-scan action menu; it is auto-detected from the scanning
+     phone when possible.
+   - **Task list / shopping list** — optional todo entities for the hooks below.
+   - **Double scan window** — seconds between taps to count as a double scan
+     (default `3`).
+   - **Handle tag scans automatically** — leave on to let the integration
+     process its own tags. Turn off if you want to call the service from your
+     own automation.
+4. **Choose an appliance template** — Coffee Machine, Litter Box, Pet Feeder,
+   Water Fountain, AC Unit, Guinea Pig Habitat, Robot Vacuum, or Custom.
+5. **Tick the actions to track.** Recommended actions are pre-selected and each
+   row shows how often it is usually done. The time is used for the first
+   reminder; after two logs the integration follows your actual rhythm.
+6. **Review the preview and choose the default action** — the action logged by
+   a single scan. The last step lists the entities that will be created.
+7. Repeat for every object.
 
-| Entity | Domain | Description | LTS |
-|---|---|---|---|
-| `sensor.<device>_total_scans` | sensor | All actions combined, `state_class: total_increasing` | Yes |
-| `sensor.<device>_last_scan` | sensor | ISO timestamp of most recent scan (`device_class: timestamp`) | No |
-| `sensor.<device>_last_action` | sensor | Label of last action logged | No |
-| `sensor.<device>_last_scanner` | sensor | Name of person who last scanned | No |
-| `button.<device>_log_manual` | button | Log default action without a tag scan | — |
+Actions can be added, edited, or removed later from the integration's
+**Configure** button. Removing an action leaves its old entities behind as
+unavailable; delete them from the entity registry if you no longer want them.
 
-### Per-action entities (6 per action)
+Each action also gets a `button.<device>_log_<action>` entity, so every action
+is available from the appliance's device page. A double scan shows the two
+quick actions plus **Open Appliance tasks**, which opens that device page.
 
-Created for EVERY action, regardless of whether `expected_interval_hours` is set. Sparse actions (rarely scanned) simply report `unknown` until enough data exists.
+---
 
-| Entity | Domain | Description | LTS |
-|---|---|---|---|
-| `sensor.<device>_<action>_last_scan` | sensor | ISO timestamp of last time this action was logged (`device_class: timestamp`) | No |
-| `sensor.<device>_<action>_interval_hours` | sensor | Running average hours between scans, self-learning (`state_class: measurement`) | Yes |
-| `sensor.<device>_<action>_next_due` | sensor | Estimated next due datetime (`device_class: timestamp`) | No |
-| `sensor.<device>_<action>_last_scanner` | sensor | Name of person who last performed this action | No |
-| `sensor.<device>_<action>_total_scans` | sensor | Count of this specific action, `state_class: total_increasing` | Yes |
-| `binary_sensor.<device>_<action>_overdue` | binary_sensor | `on` when `now > next_due` | No |
-
-### Entity naming
-
-Entity IDs follow HA convention: lowercase, ASCII, underscores.
+## How a scan is handled
 
 ```
-sensor.coffee_machine_cleaned_interval_hours
-sensor.coffee_machine_descaled_last_scan
-binary_sensor.abbys_litter_box_cleaned_overdue
-sensor.living_room_plants_fertilized_total_scans
+tag_scanned event
+      │
+      ▼
+integration finds the device by tag ID
+      │
+      ├─ action supplied? ──────────────► log immediately
+      │
+      ├─ second scan within window? ────► actionable notification menu
+      │                                      └─ button tap logs the action
+      │
+      └─ first scan ─────────────────────► wait for the window
+                                             └─ log the default action
 ```
 
-### Example: Coffee Machine with 4 actions
+- If **no notification service** can be resolved, a double scan falls back to
+  logging the default action.
+- Action buttons carry a short-lived token, so taps from old notifications are
+  ignored after five minutes.
+- Android shows at most three notification actions; menus with more actions may
+  hide the extra buttons. iOS shows more.
 
-```
-Device entities (5):
-  sensor.coffee_machine_total_scans
-  sensor.coffee_machine_last_scan
-  sensor.coffee_machine_last_action
-  sensor.coffee_machine_last_scanner
-  button.coffee_machine_log_manual
+---
 
-Action: cleaned (6):
-  sensor.coffee_machine_cleaned_last_scan
-  sensor.coffee_machine_cleaned_interval_hours
-  sensor.coffee_machine_cleaned_next_due
-  sensor.coffee_machine_cleaned_last_scanner
-  sensor.coffee_machine_cleaned_total_scans
-  binary_sensor.coffee_machine_cleaned_overdue
+## Configuration reference
 
-Action: descaled (6)
-Action: beans_refilled (6)
-Action: filter_changed (6)
+### Device fields
 
-Total: 5 + 24 = 29 entities
-```
+| Field | Description |
+|---|---|
+| `name` | Display name. Also used in entity names and notifications. |
+| `tag_id` | Tag selected by name from Home Assistant's tag registry (stored as the tag UUID). |
+| `default_action_key` | Action logged by a single scan. |
+| `actions` | One or more action definitions. |
+| `icon` | Icon used by the device. |
+| `area_id` | Optional Home Assistant area. |
+| `owners` | Optional `person` entities. |
+| `assignee` | Optional `person` entity; can be changed with the service. |
+| `double_scan_window_seconds` | Window for detecting a double scan. |
+| `auto_scan` | Process `tag_scanned` events automatically (default on). |
+| `notify_service` | Legacy notify service used for action menus, e.g. `mobile_app_pixel_9`. |
+| `task_list` | Optional `todo` entity for `triggers_task`. |
+| `shopping_list` | Optional `todo` entity for `triggers_purchase`. |
+| `template_id` | Appliance template used at creation, or `custom`. |
+| `template_version` | Catalog version recorded when the entry was created. |
 
-This is many entities. The dashboard view groups them per device with collapsible cards so the user is not overwhelmed.
+### Action fields
+
+| Field | Description |
+|---|---|
+| `key` | Lowercase identifier (`[a-z0-9_]+`), unique per device. |
+| `label` | Text shown in entities, events, and notifications. |
+| `expected_interval_hours` | Optional seed interval. Used until the measured average takes over. |
+| `triggers_purchase` | Add `"<label> (<device>)"` to the shopping list when logged. Duplicates are skipped. |
+| `triggers_task` | Complete an open task with the same summary when logged. |
+
+---
+
+## Self-learning intervals
+
+For each action the integration stores the first scan, the last scan, and the
+number of scans.
+
+| Scans | `interval_hours` | `next_due` |
+|---|---|---|
+| 0 | unknown | unknown |
+| 1 | unknown | `last_scan + seed` (if a seed is set) |
+| ≥ 2 | `(last - first) / (count - 1)` hours | `last_scan + interval` |
+
+The seed is only a bootstrap. As soon as two scans exist, the measured average
+drives both `next_due` and the overdue binary sensor, so the reminders adapt to
+your real habits.
+
+`overdue` is `on` when `now > next_due` and the action has been scanned at
+least once.
+
+---
+
+## Entities
+
+### Per device
+
+| Entity | Description |
+|---|---|
+| `sensor.<device>_total_scans` | All actions combined (`total_increasing`). |
+| `sensor.<device>_last_scan` | Timestamp of the most recent scan. |
+| `sensor.<device>_last_action` | Label of the most recent action. |
+| `sensor.<device>_last_scanner` | Person resolved from the scanning phone. |
+| `button.<device>_log_manually` | Logs the default action without a tag. |
+
+### Per action
+
+| Entity | Description |
+|---|---|
+| `sensor.<device>_<action>_last_scan` | Timestamp of the last scan. |
+| `sensor.<device>_<action>_interval` | Learned average interval in hours. |
+| `sensor.<device>_<action>_next_due` | Estimated next due time. |
+| `sensor.<device>_<action>_last_scanner` | Person who last performed the action. |
+| `sensor.<device>_<action>_total_scans` | Scan count for this action. |
+| `binary_sensor.<device>_<action>_overdue` | On when the action is past due. |
 
 ---
 
 ## Services
 
-### `nfc_tasgs.scan`
-
-Called by the automation when a tag is scanned. Handles person resolution, double-scan detection within the window, counter increment for the correct action, and notification for the double-scan menu.
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `tag_id` | string | Yes | UUID of scanned tag |
-| `device_id` | string | Yes | HA device ID of the scanning phone |
-| `action` | string | No | Action key. If omitted, uses device's `default_action`. Set when notification action is tapped. |
-
-**Single-scan flow**: tag scanned → `nfc_tasgs.scan(tag_id, device_id)` → integration resolves device + person → logs default_action with timestamp → increments counters → updates intervals → fires `nfc_tasgs_action` event.
-
-**Double-scan detection**: the automation (blueprint) handles this. First scan stores pending state and starts a short timer. Second scan of same tag within the window cancels the timer and sends a notification with action buttons. Timer expiry without a second scan auto-calls `nfc_tasgs.scan`.
-
-### `nfc_tasgs.log`
-
-Directly log an action without a tag scan. For dashboard buttons or manual overrides.
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `device_id` | string | Yes | Device key from config |
-| `action_key` | string | Yes | Action key to log |
-| `scanner` | string | Yes | Person name or "Manual" |
-
-### `nfc_tasgs.reset_action`
-
-Reset a specific action's counters and history to 0. Useful when replacing a device or correcting data.
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `device_id` | string | Yes | Device key |
-| `action_key` | string | Yes | Action to reset |
-
-### `nfc_tasgs.set_assignee`
-
-Change the currently assigned person for a device.
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `device_id` | string | Yes | Device key |
-| `person` | person_id | Yes | Person entity ID, or empty string to clear |
+| Service | Fields | Description |
+|---|---|---|
+| `nfc_tasgs.scan` | `tag_id`, `scanner_device_id`, `action?` | Process a scan. Without `action`, the double-scan window applies. |
+| `nfc_tasgs.log` | `device_id`, `action_key`, `scanner` | Log an action manually. |
+| `nfc_tasgs.reset_action` | `device_id`, `action_key` | Reset one action's history and counters. |
+| `nfc_tasgs.set_assignee` | `device_id`, `person` | Change the assignee (persisted). |
+| `nfc_tasgs.defer` | `device_id`, `action_key`, `days` | Postpone one action without logging a scan or changing its learned interval. |
+| `nfc_tasgs.check_overdue` | — | Run the overdue check immediately. |
 
 ---
 
-## Person resolution
+## Events
 
-The `tag_scanned` event carries a `device_id` (the phone that scanned the tag). The integration resolves this to a person:
+### `nfc_tasgs_action`
 
-1. Look up the device in HA's device registry
-2. Find associated `device_tracker.*` entities
-3. Match `device_tracker` to a `person.*` entity via the person's `device_trackers` attribute
-4. Fallback: if no person found, scanner = `"Unknown"`
-
-This works automatically if each person linked their HA Companion app to their user profile during setup. No additional configuration needed.
-
----
-
-## Notification system
-
-### Overdue alerts
-
-When `binary_sensor.<device>_<action>_overdue` turns `on`, an automation (provided as a blueprint) can:
-
-1. **Notify owners**: ping all owners via their mobile app notify entities
-2. **Notify assignee**: if a specific person is assigned, ping only them
-3. **Create a task**: add an item to `task_list` if configured
-
-Notification template:
-
-> **[Device Name]** — **[Action Label]** is overdue
-> Last done **{interval} days ago** by **{person}**
-> Average interval: **{avg_interval} days**
-> Next due was: **{next_due_date}**
-
-### Rotating assignee reminders
-
-When multiple owners exist and the same person did the last N actions, the system can ping the owner who has done it **least recently** instead:
-
-```
-for each action:
-  sort owners by last_scanned_date (null first)
-  if current_assignee == last_scanner and others haven't scanned recently:
-    nudge the oldest-stale owner
-```
-
-This prevents one person from always getting the notification.
-
----
-
-## Task list integration
-
-### Creating tasks
-
-When `triggers_task: true` is set on an action and the device has a `task_list`:
-
-- **On overdue**: create a task "**[Action Label]** [Device Name]" in the configured todo list
-- **On completion**: mark the task as completed automatically when the action is logged
-- **Recurring**: immediately create the next instance with a due date based on the learned interval
-
-### Shopping list integration
-
-When `triggers_purchase: true` is set on an action and the device has a `shopping_list`:
-
-- **On action logged**: add item "**[Device Name]** supplies — **[Action Label]**" to the shopping list
-- Example: logging "Beans Refilled" on "Coffee Machine" adds "Coffee Machine supplies — Beans Refilled" to `todo.home_chores`
-- **Deduplication**: if the same purchase item is already on the list (incomplete), don't duplicate it
-
----
-
-## Audit trail
-
-Every scan or manual log fires a custom event `nfc_tasgs_action`:
+Fired after every logged action:
 
 ```json
 {
-  "event_type": "nfc_tasgs_action",
-  "data": {
-    "device_id": "coffee_machine",
-    "device_name": "Coffee Machine",
-    "action_key": "beans_refilled",
-    "action_label": "Beans Refilled",
-    "scanner": "Jon Doe",
-    "scanner_device_id": "0123456789abcdef0123456789abcdef",
-    "timestamp": "2026-07-13T22:30:00+01:00",
-    "scan_count": 47,
-    "action_scan_count": 12,
-    "mode": "double_scan",
-    "interval_hours": 114.3
-  }
+  "device_id": "coffee_machine",
+  "device_name": "Coffee Machine",
+  "action_key": "beans_refilled",
+  "action_label": "Beans Refilled",
+  "scanner": "Jane",
+  "scanner_device_id": "…",
+  "timestamp": "2026-10-19T18:00:00+00:00",
+  "scan_count": 12,
+  "action_scan_count": 4,
+  "mode": "scan",
+  "interval_hours": 92.5
 }
 ```
 
-This event appears in the HA logbook, is consumable by any automation, and can be persisted to a local calendar via an optional automation blueprint.
+`mode` is `scan` for tag scans and `manual` for `nfc_tasgs.log`.
 
----
+### `nfc_tasgs_overdue`
 
-## Dashboard
-
-The integration optionally creates an auto-generated dashboard view with one collapsible section per device, showing:
-
-- Total scans (tile card)
-- Last action + last scanner (entities card)
-- Per-action cards: last scan, interval, next due, overdue status
-
-Users can also manually build custom dashboards using the generated entities.
-
----
-
-## Automation blueprint
-
-The integration ships with a blueprint (`nfc_tasgs_tag_scan.yaml`) that users import once. It handles:
-
-1. Trigger: `tag_scanned` event
-2. Resolve: calls `nfc_tasgs.scan` service
-3. Double-scan detection: times window, sends notification with action menu
-4. Notification action handling: passes chosen action key back to `nfc_tasgs.scan`
-
-Users don't write any automation YAML — they import the blueprint, done.
-
----
-
-## 10 Example devices
-
-| # | Device | Actions | Notes |
-|---|---|---|---|
-| 1 | Cat litter box | cleaned, deep_cleaned, litter_replaced | 48h interval. Litter replaced triggers purchase. |
-| 2 | Automatic cat feeder | refilled, deep_cleaned, battery_changed | 72h. Battery changed is rare. |
-| 3 | Coffee machine | cleaned, descaled, beans_refilled, filter_changed | Multiple intervals. Beans + filter trigger purchase. |
-| 4 | Living room plants | watered, fertilized, repotted, pruned | Watered = frequent (96h). Fertilized = seasonal. |
-| 5 | Robot vacuum | maintained, filter_replaced, brush_replaced, bag_emptied | Bag replaced triggers purchase. |
-| 6 | Air purifier | filter_checked, filter_replaced, prefilter_washed | Long intervals. Filter replaced triggers purchase. |
-| 7 | Fridge water filter | replaced | 6-month interval. Always triggers purchase. |
-| 8 | Car maintenance | oil_changed, tires_rotated, filter_replaced, washed | Mix of DIY and professional intervals. |
-| 9 | Bicycle | chain_lubed, cleaned, chain_replaced, brake_pads_replaced | Chain replaced + brake pads trigger purchase. |
-| 10 | HVAC system | filter_checked, filter_replaced | Seasonal. Filter triggers purchase. |
-| 11 | Fish tank | water_changed, filter_cleaned, water_tested, fish_fed | Water changed = frequent. Water tested = purchase trigger. |
-| 12 | Grill / BBQ | cleaned, propane_refilled, grates_replaced | Seasonal. Propane triggers purchase. |
-
----
-
-## Implementation plan
-
-### Phase 1 — Core integration
-
-```
-custom_components/nfc_tasgs/
-├── __init__.py           # async_setup, async_setup_entry, services
-├── config_flow.py         # UI config flow (add/edit/delete devices)
-├── const.py               # DOMAIN, ATTR_*, CONF_* constants
-├── coordinator.py         # DataUpdateCoordinator for state management
-├── device.py              # Per-device state, scan handling, interval calculation
-├── sensor.py              # All sensor entities (device-level + per-action)
-├── binary_sensor.py       # Overdue binary sensors (per-action)
-├── button.py              # Manual log button (per-device)
-├── services.py            # Service definitions (scan, log, reset, set_assignee)
-├── manifest.json          # Integration metadata
-├── strings.json           # English strings
-├── translations/          # i18n files
-│   └── en.json
-├── services.yaml          # Service definitions for HA
-├── blueprints/
-│   └── tag_scan.yaml      # Automation blueprint
-└── README.md              # This document
-```
-
-### Phase 2 — Notifications & Task integration
-
-- Overdue notification automation (blueprint)
-- Task list integration (`todo.create_item`, `todo.update_item`)
-- Shopping list integration (deduplication logic)
-- Person rotation / fair-share logic
-
-### Phase 3 — Dashboard & sharing
-
-- Auto-generated dashboard view
-- HACS submission
-- Custom Lovelace card (optional — cards showing per-action intervals as sparklines)
-- Statistics card showing historical interval trends per action
-
----
-
-## Data model
-
-### Configuration storage
-
-Stored in HA's config entry system (`.storage/core.config_entries`), one entry per device. No YAML file needed.
+Fired when an overdue notification is sent:
 
 ```json
 {
-  "devices": [
-    {
-      "id": "coffee_machine_01",
-      "name": "Coffee Machine",
-      "tag_id": "00000000-0000-0000-0000-000000000001",
-      "default_action": "cleaned",
-      "owners": ["person.jon_doe", "person.jane_doe"],
-      "assignee": null,
-      "double_scan_window_seconds": 3,
-      "task_list": "todo.home_chores",
-      "shopping_list": "todo.home_chores",
-      "icon": "mdi:coffee",
-      "area_id": null,
-      "actions": [
-        {
-          "key": "cleaned",
-          "label": "Cleaned",
-          "expected_interval_hours": 168,
-          "triggers_purchase": false,
-          "triggers_task": false
-        }
-      ]
-    }
-  ]
+  "device_id": "coffee_machine",
+  "device_name": "Coffee Machine",
+  "action_key": "descaled",
+  "action_label": "Descaled",
+  "due": "2026-10-18T09:00:00+00:00"
 }
 ```
 
-### Runtime state (per-action scan history)
+### `nfc_tasgs_deferred`
 
-Stored in memory during runtime, persisted to HA's `restore_state` for survival across restarts. The coordinator tracks, per action:
+Fired after `nfc_tasgs.defer` postpones an action:
 
-```python
+```json
 {
-    "first_scan": datetime,        # timestamp of first scan ever
-    "last_scan": datetime,          # timestamp of most recent scan
-    "total_scans": int,             # cumulative count
-    "last_scanner": str,            # person name
-    "last_scanner_device_id": str,  # HA device ID
+  "device_id": "coffee_machine",
+  "device_name": "Coffee Machine",
+  "action_key": "filter_replaced",
+  "action_label": "Filter Replaced",
+  "days": 15,
+  "original_due": "2026-10-19T09:00:00+00:00",
+  "deferred_until": "2026-11-03T09:00:00+00:00"
 }
 ```
-
-The `interval_hours` and `next_due` are computed properties, not stored. They derive from the above data at read time.
 
 ---
 
-## Key design decisions
+## Todo hooks
 
-1. **Per-action entities, always.** Every action gets its full set of entities regardless of whether an interval is seeded. Actions with no data report `unknown`. This avoids "why isn't there a sensor for this action?" confusion and supports self-learning for all actions.
+- **Shopping list** (`triggers_purchase`): adds `"<label> (<device>)"` when the
+  action is logged. If an open item with that summary already exists, nothing is
+  added.
+- **Task list** (`triggers_task`): if an open item with that summary exists, it
+  is marked completed. No item is created automatically.
 
-2. **Seed helps boot, data overrides.** The first interval reminder uses the configured seed. After 2 scans, the actual data takes over. This means the system is useful from day 1 but also adapts to reality.
+Both require the matching `todo` entity to be selected in the device options.
 
-3. **No YAML configuration.** All device/action config goes through the UI config flow. This makes it accessible to non-technical users and eliminates YAML indentation errors.
+---
 
-4. **Blueprint, not hardcoded automation.** The scan→service bridge lives in a reusable blueprint. Users import once, not per device.
+## Data
 
-5. **Event-driven audit trail.** Every scan emits a custom event. This is the canonical record. Calendar entries, logbook entries, and external consumers all derive from this event stream.
+Scan history is stored in `.storage/nfc_tasgs.history` (per config entry and
+action). Statistics sensors expose long-term statistics through Home Assistant's
+recorder. Removing an action or a device leaves historical statistics in the
+recorder; remove the entities manually if you want them gone.
 
-6. **integration-scoped entity IDs.** Entity IDs use only the device name and action key (`sensor.coffee_machine_cleaned_interval_hours`), not a prefix like `nfc_tasgs.*`. This keeps dashboards clean.
+---
+
+## Troubleshooting
+
+- **Double scan logs the default action instead of opening the menu** — no
+  notification service could be resolved. Set `notify_service` explicitly
+  (e.g. `mobile_app_your_phone`).
+- **Scan shows `Unknown` as scanner** — the phone's device tracker is not in any
+  person's device trackers. Add it under **Settings → People**.
+- **Wrong tag** — check the tag UUID in **Settings → Tags** matches the device.
+- **Integration will not load** — check **Settings → System → Logs** for
+  `nfc_tasgs`. A stale folder such as `custom_components/nfc_tasgs.bak` must be
+  moved out of `custom_components/`.
+
+---
+
+## Development
+
+```bash
+ruff check .
+ruff format --check .
+pytest tests -q
+```
+
+The integration lives in `custom_components/nfc_tasgs/`; `tests/` and tooling
+are development-only. See `CONTRIBUTING.md` for the branch/PR workflow.

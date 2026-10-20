@@ -10,6 +10,8 @@ CONF_ASSIGNEE = "assignee"
 CONF_DOUBLE_SCAN_WINDOW = "double_scan_window_seconds"
 CONF_TASK_LIST = "task_list"
 CONF_SHOPPING_LIST = "shopping_list"
+CONF_NOTIFY_SERVICE = "notify_service"
+CONF_AUTO_SCAN = "auto_scan"
 CONF_ICON = "icon"
 CONF_AREA_ID = "area_id"
 
@@ -18,6 +20,10 @@ CONF_ACTION_LABEL = "label"
 CONF_ACTION_INTERVAL = "expected_interval_hours"
 CONF_ACTION_PURCHASE = "triggers_purchase"
 CONF_ACTION_TASK = "triggers_task"
+CONF_ACTION_QUICK = "quick"
+CONF_SELECTED_ACTIONS = "selected_actions"
+CONF_TEMPLATE_ID = "template_id"
+CONF_TEMPLATE_VERSION = "template_version"
 
 ATTR_DEVICE_ID = "device_id"
 ATTR_DEVICE_NAME = "device_name"
@@ -30,13 +36,27 @@ ATTR_MODE = "mode"
 ATTR_SCAN_COUNT = "scan_count"
 ATTR_ACTION_SCAN_COUNT = "action_scan_count"
 ATTR_INTERVAL_HOURS = "interval_hours"
+ATTR_DAYS = "days"
+ATTR_DEFERRED_UNTIL = "deferred_until"
+ATTR_ORIGINAL_DUE = "original_due"
 
 EVENT_ACTION = f"{DOMAIN}_action"
+EVENT_OVERDUE = f"{DOMAIN}_overdue"
+EVENT_DEFERRED = f"{DOMAIN}_deferred"
+EVENT_NOTIFICATION_ACTION = "mobile_app_notification_action"
+
+MENU_ACTION_PREFIX = f"{DOMAIN}_menu|"
+MENU_TTL_SECONDS = 300
+OVERDUE_NOTIFY_COOLDOWN_HOURS = 24
 
 SERVICE_SCAN = "scan"
 SERVICE_LOG = "log"
 SERVICE_RESET_ACTION = "reset_action"
 SERVICE_SET_ASSIGNEE = "set_assignee"
+SERVICE_CHECK_OVERDUE = "check_overdue"
+SERVICE_DEFER = "defer"
+
+HISTORY_DEFERRED_UNTIL = "deferred_until_ts"
 
 PLATFORMS = ["sensor", "binary_sensor", "button"]
 

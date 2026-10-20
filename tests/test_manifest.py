@@ -10,10 +10,7 @@ import json
 from pathlib import Path
 
 MANIFEST = (
-    Path(__file__).parents[1]
-    / "custom_components"
-    / "nfc_tasgs"
-    / "manifest.json"
+    Path(__file__).parents[1] / "custom_components" / "nfc_tasgs" / "manifest.json"
 )
 
 

@@ -1,6 +1,9 @@
 scan:
   name: "Scan NFC Tasg"
-  description: "Process a tag scan for a tracked device."
+  description: >-
+    Process a tag scan. Without an action, a single scan logs the default
+    action after the double-scan window; a second scan within the window
+    sends an action menu to the scanning device.
   fields:
     tag_id:
       name: "Tag ID"
@@ -18,7 +21,10 @@ scan:
         text: {}
     action:
       name: "Action"
-      description: "Action key. If omitted, uses the device default action."
+      description: >-
+        Action key. When set, the action is logged immediately (this is what
+        the notification menu uses). When omitted, the double-scan window
+        applies and the default action is logged.
       required: false
       example: "beans_refilled"
       selector:
@@ -87,3 +93,42 @@ set_assignee:
       example: "person.jon_doe"
       selector:
         text: {}
+
+defer:
+  name: "Defer action"
+  description: >-
+    Postpone an action's overdue date without logging a scan. Deferring does
+    not change the scan count or the learned interval.
+  fields:
+    device_id:
+      name: "Device"
+      description: "NFC Tasgs device to defer."
+      required: true
+      selector:
+        device:
+          integration: nfc_tasgs
+    action_key:
+      name: "Action Key"
+      description: "Action key to defer."
+      required: true
+      example: "filter_replaced"
+      selector:
+        text: {}
+    days:
+      name: "Days"
+      description: "How many days to postpone the action."
+      required: true
+      example: 15
+      selector:
+        number:
+          min: 1
+          max: 365
+          step: 1
+          mode: box
+          unit_of_measurement: "days"
+
+check_overdue:
+  name: "Check overdue actions"
+  description: >-
+    Send notifications for actions that are past their next due time.
+    Each action is notified at most once every 24 hours.
