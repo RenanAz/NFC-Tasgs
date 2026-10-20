@@ -8,13 +8,18 @@ logic so scans no longer silently resolve to "Unknown".
 from __future__ import annotations
 
 from custom_components.nfc_tasgs import (
+    _action_due,
     _compute_next_due,
+    _defer_attributes,
     _match_person,
     build_menu_actions,
     parse_menu_action,
     signal_update,
 )
-from custom_components.nfc_tasgs.const import MENU_ACTION_PREFIX
+from custom_components.nfc_tasgs.const import (
+    HISTORY_DEFERRED_UNTIL,
+    MENU_ACTION_PREFIX,
+)
 
 PERSONS = [
     ("Renan", ["device_tracker.pixel_9_pro_xl", "device_tracker.lenovo_tb_x606f"]),
@@ -81,3 +86,36 @@ def test_next_due_requires_a_scan_before_seed_applies() -> None:
     assert _compute_next_due(0, None, 24) is None
     assert _compute_next_due(1_000, None, 24) == 1_000 + 24 * 3600
     assert _compute_next_due(1_000, 2, 24) == 1_000 + 2 * 3600
+
+
+def test_defer_pushes_due_date_without_changing_history() -> None:
+    action = {"key": "cleaned", "expected_interval_hours": 24}
+    rec = {"first_scan_ts": 1_000, "last_scan_ts": 1_000, "total_scans": 1}
+
+    due, original = _action_due(rec, action)
+    assert due == original == 1_000 + 24 * 3600
+
+    deferred = due + 15 * 24 * 3600
+    rec[HISTORY_DEFERRED_UNTIL] = deferred
+    effective, original = _action_due(rec, action)
+
+    assert effective == deferred
+    assert original == 1_000 + 24 * 3600
+    assert rec["total_scans"] == 1
+    attrs = _defer_attributes(rec, effective, original)
+    assert "deferred_until" in attrs
+    assert "original_due" in attrs
+
+
+def test_expired_defer_falls_back_to_original_due() -> None:
+    action = {"key": "cleaned", "expected_interval_hours": 24}
+    due = 1_000 + 24 * 3600
+    rec = {
+        "first_scan_ts": 1_000,
+        "last_scan_ts": 1_000,
+        "total_scans": 1,
+        HISTORY_DEFERRED_UNTIL: due - 60,
+    }
+    effective, original = _action_due(rec, action)
+    assert effective == original == due
+    assert _defer_attributes(rec, effective, original) == {}

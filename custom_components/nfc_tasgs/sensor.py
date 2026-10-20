@@ -16,10 +16,9 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 
-from . import _compute_interval, _compute_next_due, signal_update
+from . import _action_due, _compute_interval, _defer_attributes, signal_update
 from .const import (
     ACTION_SENSORS,
-    CONF_ACTION_INTERVAL,
     CONF_ACTION_KEY,
     CONF_ACTION_LABEL,
     CONF_ACTIONS,
@@ -217,15 +216,15 @@ class NfcTasgsActionSensor(NfcTasgsBaseSensor):
             )
 
         if self._sensor_type == "next_due":
-            ts = rec.get("last_scan_ts", 0)
-            count = rec.get("total_scans", 0)
-            interval = _compute_interval(rec.get("first_scan_ts", 0), ts, count)
-            seed = None
-            for a in self._config.get(CONF_ACTIONS, []):
-                if a[CONF_ACTION_KEY] == self._action_key:
-                    seed = a.get(CONF_ACTION_INTERVAL)
-                    break
-            due = _compute_next_due(ts, interval, seed)
+            action = next(
+                (
+                    item
+                    for item in self._config.get(CONF_ACTIONS, [])
+                    if item[CONF_ACTION_KEY] == self._action_key
+                ),
+                {},
+            )
+            due, _original = _action_due(rec, action)
             if due is None:
                 return None
             return datetime.fromtimestamp(due, tz=UTC)
@@ -237,3 +236,21 @@ class NfcTasgsActionSensor(NfcTasgsBaseSensor):
             return rec.get("total_scans", 0)
 
         return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str] | None:
+        if self._sensor_type != "next_due":
+            return None
+        history = self._entry_data.get("history", {})
+        rec = history.get(self._action_key, {})
+        action = next(
+            (
+                item
+                for item in self._config.get(CONF_ACTIONS, [])
+                if item[CONF_ACTION_KEY] == self._action_key
+            ),
+            {},
+        )
+        effective, original = _action_due(rec, action)
+        attrs = _defer_attributes(rec, effective, original)
+        return attrs or None

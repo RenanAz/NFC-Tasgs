@@ -18,6 +18,7 @@ Related: [Appliance template catalog](TEMPLATE-CATALOG.md)
 | 2026-10-19 | Gateway | The notification gateway opens the HA device page; every action has `button.<device>_log_<action>`. | Implemented |
 | 2026-10-19 | Intervals | Template intervals are seed values; self-learning takes over after two logs. No manual override yet. | Implemented |
 | 2026-10-19 | Defaults | `Cleaned` is the default action where a template has a cleaning action; Robot Vacuum uses `Maintained`. | Implemented |
+| 2026-10-20 | Defer | `nfc_tasgs.defer` postpones one action by N days without affecting scan history or the learned interval. | Implemented |
 | 2026-10-19 | Shopping/tasks | Templates do not add shopping items or tasks automatically. Explicit consumable requests are deferred. | Deferred |
 | 2026-10-19 | Use cases | A second layer of named use cases (espresso, automatic litter box, etc.) is planned after the core stabilizes. | Deferred |
 
@@ -84,9 +85,9 @@ ignores it after two scans. That is worse than the current options flow.
 
 ---
 
-## Deferred: defer/snooze an overdue action
+## Implemented: defer/snooze an overdue action
 
-**Status:** discussed, not implemented. There is no snooze/defer behavior today.
+**Status:** implemented as `nfc_tasgs.defer` on 2026-10-20.
 
 ### Current behavior
 
@@ -96,7 +97,7 @@ There is no way to postpone a single action without changing its interval or
 logging a scan. Logging a scan is wrong when the filter still has 30% life; it
 would pollute history and reset the learned interval.
 
-### Proposed design
+### Service
 
 Add a service:
 

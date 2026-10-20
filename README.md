@@ -208,6 +208,7 @@ least once.
 | `nfc_tasgs.log` | `device_id`, `action_key`, `scanner` | Log an action manually. |
 | `nfc_tasgs.reset_action` | `device_id`, `action_key` | Reset one action's history and counters. |
 | `nfc_tasgs.set_assignee` | `device_id`, `person` | Change the assignee (persisted). |
+| `nfc_tasgs.defer` | `device_id`, `action_key`, `days` | Postpone one action without logging a scan or changing its learned interval. |
 | `nfc_tasgs.check_overdue` | — | Run the overdue check immediately. |
 
 ---
@@ -247,6 +248,22 @@ Fired when an overdue notification is sent:
   "action_key": "descaled",
   "action_label": "Descaled",
   "due": "2026-10-18T09:00:00+00:00"
+}
+```
+
+### `nfc_tasgs_deferred`
+
+Fired after `nfc_tasgs.defer` postpones an action:
+
+```json
+{
+  "device_id": "coffee_machine",
+  "device_name": "Coffee Machine",
+  "action_key": "filter_replaced",
+  "action_label": "Filter Replaced",
+  "days": 15,
+  "original_due": "2026-10-19T09:00:00+00:00",
+  "deferred_until": "2026-11-03T09:00:00+00:00"
 }
 ```
 

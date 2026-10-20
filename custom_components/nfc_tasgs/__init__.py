@@ -24,10 +24,13 @@ from .const import (
     ATTR_ACTION_KEY,
     ATTR_ACTION_LABEL,
     ATTR_ACTION_SCAN_COUNT,
+    ATTR_DAYS,
+    ATTR_DEFERRED_UNTIL,
     ATTR_DEVICE_ID,
     ATTR_DEVICE_NAME,
     ATTR_INTERVAL_HOURS,
     ATTR_MODE,
+    ATTR_ORIGINAL_DUE,
     ATTR_SCAN_COUNT,
     ATTR_SCANNER,
     ATTR_SCANNER_DEVICE_ID,
@@ -53,13 +56,16 @@ from .const import (
     DEFAULT_DOUBLE_SCAN_WINDOW,
     DOMAIN,
     EVENT_ACTION,
+    EVENT_DEFERRED,
     EVENT_NOTIFICATION_ACTION,
     EVENT_OVERDUE,
+    HISTORY_DEFERRED_UNTIL,
     MENU_ACTION_PREFIX,
     MENU_TTL_SECONDS,
     OVERDUE_NOTIFY_COOLDOWN_HOURS,
     PLATFORMS,
     SERVICE_CHECK_OVERDUE,
+    SERVICE_DEFER,
     SERVICE_LOG,
     SERVICE_RESET_ACTION,
     SERVICE_SCAN,
@@ -109,6 +115,38 @@ def _compute_next_due(
     if seed_hours is not None and last_ts:
         return last_ts + seed_hours * 3600
     return None
+
+
+def _action_due(
+    rec: dict[str, Any], action: dict[str, Any]
+) -> tuple[float | None, float | None]:
+    """Return (effective due, original due), honoring a deferred date."""
+    last_ts = rec.get("last_scan_ts", 0)
+    interval = _compute_interval(
+        rec.get("first_scan_ts", 0),
+        last_ts,
+        rec.get("total_scans", 0),
+    )
+    original = _compute_next_due(last_ts, interval, action.get(CONF_ACTION_INTERVAL))
+    deferred = rec.get(HISTORY_DEFERRED_UNTIL, 0.0) or 0.0
+    if deferred and (original is None or deferred > original):
+        return deferred, original
+    return original, original
+
+
+def _defer_attributes(
+    rec: dict[str, Any], effective: float | None, original: float | None
+) -> dict[str, str]:
+    """Attributes shown when a due date has been deferred."""
+    deferred = rec.get(HISTORY_DEFERRED_UNTIL, 0.0) or 0.0
+    if not deferred or effective != deferred:
+        return {}
+    if original is not None and deferred <= original:
+        return {}
+    attrs = {ATTR_DEFERRED_UNTIL: datetime.fromtimestamp(deferred, tz=UTC).isoformat()}
+    if original is not None:
+        attrs[ATTR_ORIGINAL_DUE] = datetime.fromtimestamp(original, tz=UTC).isoformat()
+    return attrs
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -190,6 +228,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 "last_scanner": "",
                 "last_scanner_device_id": "",
                 "last_overdue_notify_ts": 0.0,
+                HISTORY_DEFERRED_UNTIL: 0.0,
             }
 
     hass.data[DOMAIN]["entries"][entry.entry_id] = {
@@ -799,9 +838,69 @@ async def _handle_reset(hass: HomeAssistant, call: ServiceCall) -> None:
             "last_scanner": "",
             "last_scanner_device_id": "",
             "last_overdue_notify_ts": 0.0,
+            HISTORY_DEFERRED_UNTIL: 0.0,
         }
     await _save_history(hass)
     _refresh_entities(hass, entry_data)
+
+
+async def _handle_defer(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Postpone an action's overdue date without logging a scan."""
+    entry_data = _get_entry_data(hass, call)
+    if not entry_data:
+        raise ServiceValidationError("No device targeted")
+    action_key = call.data["action_key"]
+    try:
+        days = float(call.data[ATTR_DAYS])
+    except (TypeError, ValueError) as err:
+        raise ServiceValidationError("days must be a number") from err
+    if days <= 0:
+        raise ServiceValidationError("days must be greater than 0")
+    action = next(
+        (
+            item
+            for item in entry_data["config"][CONF_ACTIONS]
+            if item[CONF_ACTION_KEY] == action_key
+        ),
+        None,
+    )
+    if action is None:
+        raise ServiceValidationError(
+            f"Unknown action '{action_key}' for device "
+            f"'{entry_data['config'][CONF_NAME]}'"
+        )
+
+    rec = entry_data["history"].setdefault(
+        action_key,
+        {
+            "first_scan_ts": 0.0,
+            "last_scan_ts": 0.0,
+            "total_scans": 0,
+            "last_scanner": "",
+            "last_scanner_device_id": "",
+            "last_overdue_notify_ts": 0.0,
+            HISTORY_DEFERRED_UNTIL: 0.0,
+        },
+    )
+    now_ts = datetime.now(UTC).timestamp()
+    effective, original = _action_due(rec, action)
+    base = max(now_ts, effective or now_ts)
+    deferred_until = base + days * 3600
+    rec[HISTORY_DEFERRED_UNTIL] = deferred_until
+    await _save_history(hass)
+    _refresh_entities(hass, entry_data)
+
+    attrs: dict[str, Any] = {
+        ATTR_DEVICE_ID: entry_data["slug"],
+        ATTR_DEVICE_NAME: entry_data["config"].get(CONF_NAME),
+        ATTR_ACTION_KEY: action_key,
+        ATTR_ACTION_LABEL: action.get(CONF_ACTION_LABEL, action_key),
+        ATTR_DAYS: days,
+        ATTR_DEFERRED_UNTIL: datetime.fromtimestamp(deferred_until, tz=UTC).isoformat(),
+    }
+    if original is not None:
+        attrs[ATTR_ORIGINAL_DUE] = datetime.fromtimestamp(original, tz=UTC).isoformat()
+    hass.bus.async_fire(EVENT_DEFERRED, attrs)
 
 
 async def _handle_set_assignee(hass: HomeAssistant, call: ServiceCall) -> None:
@@ -840,6 +939,7 @@ def _record_scan(
     rec["last_scanner"] = person
     rec["last_scanner_device_id"] = scanner_device_id
     rec["last_overdue_notify_ts"] = 0.0
+    rec[HISTORY_DEFERRED_UNTIL] = 0.0
 
 
 def _fire_event(
@@ -908,16 +1008,7 @@ async def _async_check_overdue(
             rec = entry_data["history"].get(action_key)
             if not rec or rec.get("total_scans", 0) == 0:
                 continue
-            interval = _compute_interval(
-                rec.get("first_scan_ts", 0),
-                rec.get("last_scan_ts", 0),
-                rec.get("total_scans", 0),
-            )
-            due = _compute_next_due(
-                rec.get("last_scan_ts", 0),
-                interval,
-                action.get(CONF_ACTION_INTERVAL),
-            )
+            due, _ = _action_due(rec, action)
             if due is None or now_ts <= due:
                 continue
             last_notified = rec.get("last_overdue_notify_ts", 0.0)
@@ -972,11 +1063,15 @@ def _register_services(hass: HomeAssistant) -> None:
     async def check_overdue_service(call: ServiceCall) -> None:
         await _async_check_overdue(hass)
 
+    async def defer_service(call: ServiceCall) -> None:
+        await _handle_defer(hass, call)
+
     hass.services.async_register(DOMAIN, SERVICE_SCAN, scan_service)
     hass.services.async_register(DOMAIN, SERVICE_LOG, log_service)
     hass.services.async_register(DOMAIN, SERVICE_RESET_ACTION, reset_service)
     hass.services.async_register(DOMAIN, SERVICE_SET_ASSIGNEE, assignee_service)
     hass.services.async_register(DOMAIN, SERVICE_CHECK_OVERDUE, check_overdue_service)
+    hass.services.async_register(DOMAIN, SERVICE_DEFER, defer_service)
 
     if not hass.data[DOMAIN].get("event_listener_registered"):
         hass.bus.async_listen(

@@ -36,9 +36,13 @@ ATTR_MODE = "mode"
 ATTR_SCAN_COUNT = "scan_count"
 ATTR_ACTION_SCAN_COUNT = "action_scan_count"
 ATTR_INTERVAL_HOURS = "interval_hours"
+ATTR_DAYS = "days"
+ATTR_DEFERRED_UNTIL = "deferred_until"
+ATTR_ORIGINAL_DUE = "original_due"
 
 EVENT_ACTION = f"{DOMAIN}_action"
 EVENT_OVERDUE = f"{DOMAIN}_overdue"
+EVENT_DEFERRED = f"{DOMAIN}_deferred"
 EVENT_NOTIFICATION_ACTION = "mobile_app_notification_action"
 
 MENU_ACTION_PREFIX = f"{DOMAIN}_menu|"
@@ -50,6 +54,9 @@ SERVICE_LOG = "log"
 SERVICE_RESET_ACTION = "reset_action"
 SERVICE_SET_ASSIGNEE = "set_assignee"
 SERVICE_CHECK_OVERDUE = "check_overdue"
+SERVICE_DEFER = "defer"
+
+HISTORY_DEFERRED_UNTIL = "deferred_until_ts"
 
 PLATFORMS = ["sensor", "binary_sensor", "button"]
 

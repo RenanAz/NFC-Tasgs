@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Overdue reminders: an hourly check sends a notification for each overdue
   action (at most once per 24 h) and fires `nfc_tasgs_overdue`. Also exposed as
   the `nfc_tasgs.check_overdue` service for manual runs.
+- `nfc_tasgs.defer` service: postpone one action by N days without logging a
+  scan, changing counters, or changing the learned interval. `next_due` and
+  the overdue sensor respect the defer; logging or resetting the action clears
+  it. Fires `nfc_tasgs_deferred`.
 - Shopping-list hook: actions with `triggers_purchase` add a deduplicated item
   to the device's shopping list.
 - Task-list hook: actions with `triggers_task` complete a matching open item in
