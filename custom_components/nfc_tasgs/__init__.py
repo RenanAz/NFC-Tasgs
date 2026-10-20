@@ -12,6 +12,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.dispatcher import async_dispatcher_send
@@ -192,6 +193,39 @@ async def async_remove_config_entry_device(
     return (DOMAIN, config_entry.entry_id) not in device_entry.identifiers
 
 
+@callback
+def _apply_device_area(
+    hass: HomeAssistant,
+    device_registry: dr.DeviceRegistry,
+    device_entry: dr.DeviceEntry,
+    area_id: str | None,
+) -> None:
+    """Assign the configured area to the virtual device.
+
+    The config/options flows store an area ID, but the device registry's
+    ``suggested_area`` argument expects an area *name*. Passing an ID made Home
+    Assistant create a second area named after the ID when no area with that
+    name existed (visible in the "Name and assign" dialog). Assign the ID
+    explicitly instead, and leave the device alone if the area was deleted.
+    """
+    if not area_id:
+        return
+    area_registry = ar.async_get(hass)
+    area = area_registry.async_get_area(area_id)
+    if area is None:
+        area = area_registry.async_get_area_by_name(area_id)
+    if area is None:
+        _LOGGER.warning(
+            "NFC Tasgs device %s references unknown area %s; keeping the "
+            "device's current area",
+            device_entry.id,
+            area_id,
+        )
+        return
+    if device_entry.area_id != area.id:
+        device_registry.async_update_device(device_entry.id, area_id=area.id)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     store = Store[STORAGE_DATA](hass, STORAGE_VERSION, STORAGE_KEY)
     stored = await store.async_load()
@@ -214,8 +248,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         name=entry.data.get(CONF_NAME, "NFC Tasg Device"),
         manufacturer="NFC Tasgs",
         model="Virtual Chore Device",
-        suggested_area=config.get(CONF_AREA_ID),
     )
+    _apply_device_area(hass, device_registry, device_entry, config.get(CONF_AREA_ID))
 
     history = stored.get(entry.entry_id, {})
     for action in config[CONF_ACTIONS]:
