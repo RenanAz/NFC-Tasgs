@@ -130,6 +130,25 @@ class _ActionsEditorMixin:
             for entity_entry in er.async_get(self.hass).entities.values()
         )
 
+    def _tag_options(self) -> list[dict[str, str]]:
+        """Compact tag picker options: friendly name -> tag entity ID."""
+        options: list[dict[str, str]] = []
+        for entity_entry in er.async_get(self.hass).entities.values():
+            if entity_entry.domain != "tag":
+                continue
+            state = self.hass.states.get(entity_entry.entity_id)
+            label = None
+            if state is not None:
+                label = state.attributes.get("friendly_name")
+            label = (
+                label
+                or entity_entry.name
+                or entity_entry.original_name
+                or entity_entry.entity_id
+            )
+            options.append({"value": entity_entry.entity_id, "label": label})
+        return sorted(options, key=lambda option: option["label"].lower())
+
     def _validate_device(self) -> dict[str, str]:
         if not self._include_identity:
             return {}
@@ -159,7 +178,14 @@ class _ActionsEditorMixin:
             fields[vol.Required(CONF_NAME, default=current.get(CONF_NAME, ""))] = (
                 selector({"text": {}})
             )
-            tag_selector = selector({"entity": {"domain": "tag"}})
+            tag_selector = selector(
+                {
+                    "select": {
+                        "options": self._tag_options(),
+                        "mode": "dropdown",
+                    }
+                }
+            )
             tag_entity_id = None
             if current.get(CONF_TAG_ID):
                 tag_entity_id = er.async_get(self.hass).async_get_entity_id(
