@@ -26,19 +26,19 @@
                     "add_action": "Add action",
                     "edit_action": "Edit action",
                     "remove_action": "Remove action",
-                    "finish": "Finish setup"
+                    "finish": "Finish setup",
+                    "back": "Back"
                 }
             },
             "add_action": {
                 "title": "Add action",
                 "data": {
-                    "key": "Action key",
                     "label": "Label",
                     "expected_interval_hours": "How often? (days)",
                     "triggers_purchase": "Adds an item to the shopping list",
                     "triggers_task": "Creates a task in the task list"
                 },
-                "description": "How often is used for the first reminder. After two logs, NFC Tasgs follows your actual rhythm."
+                "description": "The internal key is generated from the label automatically (for example, “Beans Refilled” becomes “beans_refilled”). How often is used for the first reminder; after two logs, NFC Tasgs follows your actual rhythm."
             },
             "edit_action": {
                 "title": "Edit action",
@@ -50,13 +50,12 @@
             "edit_action_form": {
                 "title": "Edit action",
                 "data": {
-                    "key": "Action key",
                     "label": "Label",
                     "expected_interval_hours": "How often? (days)",
                     "triggers_purchase": "Adds an item to the shopping list",
                     "triggers_task": "Creates a task in the task list"
                 },
-                "description": "How often is used for the first reminder. After two logs, NFC Tasgs follows your actual rhythm."
+                "description": "The internal key stays fixed when you rename the label, so history and entities are preserved. How often is used for the first reminder; after two logs, NFC Tasgs follows your actual rhythm."
             },
             "remove_action": {
                 "title": "Remove action",
@@ -97,7 +96,8 @@
             "invalid_key": "Use lowercase letters, numbers, and underscores only.",
             "duplicate_key": "An action with this key already exists.",
             "required": "This field is required.",
-            "select_at_least_one": "Select at least one action."
+            "select_at_least_one": "Select at least one action.",
+            "duplicate_label": "An action with this label already exists."
         },
         "abort": {
             "already_configured": "This tag is already assigned to a device.",
@@ -128,19 +128,19 @@
                     "add_action": "Add action",
                     "edit_action": "Edit action",
                     "remove_action": "Remove action",
-                    "finish": "Save"
+                    "finish": "Save",
+                    "back": "Back"
                 }
             },
             "add_action": {
                 "title": "Add action",
                 "data": {
-                    "key": "Action key",
                     "label": "Label",
                     "expected_interval_hours": "How often? (days)",
                     "triggers_purchase": "Adds an item to the shopping list",
                     "triggers_task": "Creates a task in the task list"
                 },
-                "description": "How often is used for the first reminder. After two logs, NFC Tasgs follows your actual rhythm."
+                "description": "The internal key is generated from the label automatically (for example, “Beans Refilled” becomes “beans_refilled”). How often is used for the first reminder; after two logs, NFC Tasgs follows your actual rhythm."
             },
             "edit_action": {
                 "title": "Edit action",
@@ -152,13 +152,12 @@
             "edit_action_form": {
                 "title": "Edit action",
                 "data": {
-                    "key": "Action key",
                     "label": "Label",
                     "expected_interval_hours": "How often? (days)",
                     "triggers_purchase": "Adds an item to the shopping list",
                     "triggers_task": "Creates a task in the task list"
                 },
-                "description": "How often is used for the first reminder. After two logs, NFC Tasgs follows your actual rhythm."
+                "description": "The internal key stays fixed when you rename the label, so history and entities are preserved. How often is used for the first reminder; after two logs, NFC Tasgs follows your actual rhythm."
             },
             "remove_action": {
                 "title": "Remove action",
@@ -178,7 +177,8 @@
             "invalid_key": "Use lowercase letters, numbers, and underscores only.",
             "duplicate_key": "An action with this key already exists.",
             "required": "This field is required.",
-            "select_at_least_one": "Select at least one action."
+            "select_at_least_one": "Select at least one action.",
+            "duplicate_label": "An action with this label already exists."
         }
     }
 }

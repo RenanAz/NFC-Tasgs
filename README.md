@@ -28,6 +28,14 @@ A custom integration for Home Assistant (no YAML required).
   options flows; the integration listens to `tag_scanned` itself, so no
   blueprint or helper is required.
 
+### Design docs
+
+- [Appliance template catalog](docs/TEMPLATE-CATALOG.md) — the shipped presets,
+  action vocabulary, and community-template rules.
+- [Design decisions](docs/DESIGN-DECISIONS.md) — implemented decisions and the
+  deferred ideas log (editable intervals, defer/snooze, use cases, back-button
+  limitation, shopping/task maturity).
+
 ---
 
 ## Installation

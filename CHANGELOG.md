@@ -29,7 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Overdue notifications fall back to the assignee's or owners' phone when the
   device has no explicit notify service.
 - Structured action editor in the config and options flows: add, edit, and
-  remove actions with key, label, expected interval, and purchase/task flags.
+  remove actions with label, interval, and purchase/task flags. Action keys are
+  derived from the label automatically; the key field is no longer shown.
+- A **Back** entry on the Actions menu returns to the device settings, and the
+  tag picker is now a compact select dropdown.
+- Design docs for the template catalog and the decision/future-ideas log.
 - Appliance templates: a new device can start from a curated preset (Coffee
   Machine, Litter Box, Pet Feeder, Water Fountain, AC Unit, Guinea Pig Habitat,
   Robot Vacuum) with pre-ticked actions and a live entity preview. Keys come

@@ -52,6 +52,7 @@ from .templates import (
     template_options,
     template_preview,
 )
+from .util import derive_action_key
 
 ACTION_KEY_RE = re.compile(r"^[a-z0-9_]+$")
 
@@ -309,17 +310,23 @@ class _ActionsEditorMixin:
         menu = ["add_action"]
         if self._actions:
             menu.extend(["edit_action", "remove_action", "finish"])
+        menu.append("back")
         return self.async_show_menu(
             step_id="actions",
             menu_options=menu,
         )
 
+    async def async_step_back(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Leave the action editor without submitting changes."""
+        if self._include_identity:
+            return await self.async_step_template()
+        return await self.async_step_user()
+
     def _action_schema(self, defaults: dict[str, Any] | None = None) -> vol.Schema:
         current = defaults or {}
         fields: dict[Any, Any] = {
-            vol.Required(
-                CONF_ACTION_KEY, default=current.get(CONF_ACTION_KEY, "")
-            ): selector({"text": {}}),
             vol.Required(
                 CONF_ACTION_LABEL, default=current.get(CONF_ACTION_LABEL, "")
             ): selector({"text": {}}),
@@ -354,14 +361,20 @@ class _ActionsEditorMixin:
         ] = bool
         return vol.Schema(fields)
 
-    def _normalize_action(self, user_input: dict[str, Any]) -> dict[str, Any]:
+    def _normalize_action(
+        self,
+        user_input: dict[str, Any],
+        *,
+        key: str | None = None,
+    ) -> dict[str, Any]:
         interval_days = _clean(user_input.get(CONF_ACTION_INTERVAL))
+        label = _clean(user_input.get(CONF_ACTION_LABEL)) or ""
+        action_key = key or derive_action_key(
+            label, {action[CONF_ACTION_KEY] for action in self._actions}
+        )
         return {
-            CONF_ACTION_KEY: (user_input.get(CONF_ACTION_KEY) or "").strip().lower(),
-            CONF_ACTION_LABEL: (
-                _clean(user_input.get(CONF_ACTION_LABEL))
-                or (user_input.get(CONF_ACTION_KEY) or "").strip()
-            ),
+            CONF_ACTION_KEY: action_key,
+            CONF_ACTION_LABEL: label or action_key,
             CONF_ACTION_INTERVAL: (
                 round(float(interval_days) * 24, 2)
                 if interval_days not in (None, "")
@@ -386,6 +399,13 @@ class _ActionsEditorMixin:
             errors[CONF_ACTION_KEY] = "duplicate_key"
         if not action[CONF_ACTION_LABEL]:
             errors[CONF_ACTION_LABEL] = "required"
+        elif any(
+            existing[CONF_ACTION_LABEL].casefold()
+            == action[CONF_ACTION_LABEL].casefold()
+            and existing[CONF_ACTION_KEY] != original_key
+            for existing in self._actions
+        ):
+            errors[CONF_ACTION_LABEL] = "duplicate_label"
         return errors
 
     async def async_step_add_action(
@@ -430,7 +450,7 @@ class _ActionsEditorMixin:
         if original is None:
             return await self.async_step_actions()
         if user_input is not None:
-            action = self._normalize_action(user_input)
+            action = self._normalize_action(user_input, key=self._editing_key)
             action[CONF_ACTION_QUICK] = bool(original.get(CONF_ACTION_QUICK, False))
             errors = self._validate_action(action, original_key=self._editing_key)
             if not errors:

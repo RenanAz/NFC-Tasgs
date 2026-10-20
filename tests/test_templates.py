@@ -19,7 +19,7 @@ from custom_components.nfc_tasgs.templates import (
     selected_actions,
     template_preview,
 )
-from custom_components.nfc_tasgs.util import legacy_slugify, slugify
+from custom_components.nfc_tasgs.util import derive_action_key, legacy_slugify, slugify
 
 
 def test_template_ids_are_unique() -> None:
@@ -89,6 +89,20 @@ def test_slugify_matches_home_assistant_entity_ids() -> None:
 def test_legacy_slug_keeps_old_migration_prefix() -> None:
     assert legacy_slugify("Café") == "café"
     assert legacy_slugify("Caixa da Abby") == "caixa_da_abby"
+
+
+def test_action_key_is_derived_from_label() -> None:
+    assert derive_action_key("Beans Refilled") == "beans_refilled"
+    assert derive_action_key("  Deep   Cleaned  ") == "deep_cleaned"
+    assert derive_action_key("Filter-changed!") == "filter_changed"
+    assert derive_action_key("Café cleaned") == "cafe_cleaned"
+    assert derive_action_key("→") == "action"
+
+
+def test_action_key_gets_a_unique_suffix() -> None:
+    assert derive_action_key("Cleaned", {"cleaned"}) == "cleaned_2"
+    assert derive_action_key("Cleaned", {"cleaned", "cleaned_2"}) == "cleaned_3"
+    assert derive_action_key("Cleaned", {"other"}) == "cleaned"
 
 
 def test_preview_uses_generated_entity_names() -> None:
