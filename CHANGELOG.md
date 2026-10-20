@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] - 2026-10-20
+## [0.2.0] - 2026-10-20
 
 First public release. It consolidates the initial implementation and the
 features developed since then.
@@ -96,3 +96,7 @@ features developed since then.
   service definitions with non-real placeholders.
 - GitHub Actions are pinned to commit SHAs and limited to `contents: read`; added
   Dependabot configuration for `github-actions`.
+
+## [0.1.0] - 2026-10-20
+
+Initial public release; superseded by 0.2.0.
